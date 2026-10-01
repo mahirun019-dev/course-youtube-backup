@@ -1,0 +1,29 @@
+# Local credentials and personal data (all runtime data stays untracked)
+data/
+client_secret.json
+client_secret*.json
+!client_secret.example.json
+token*.json
+credentials*.json
+.env
+.env.*
+*.sqlite*
+*.db
+*.mp4
+*.mkv
+*.webm
+*.mov
+*.mp3
+*.srt
+*.vtt
+*.sbv
+# Environments / caches / archives
+.venv/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+*.log
+*.zip
+.DS_Store
+work/
+playwright-report/
