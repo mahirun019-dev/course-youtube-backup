@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 from safety import ROOT,scan
-from package import package
+from package import package, VERSION
 
 def run(*args,capture=False,check=True):
     return subprocess.run(args,cwd=ROOT,text=True,capture_output=capture,check=check)
@@ -30,7 +30,7 @@ def main():
     (ROOT/"docs/project.json").write_text(json.dumps({"repository":repository,"pages":pages},ensure_ascii=False,indent=2)+"\n")
     readme = ROOT/"README.md"
     text = readme.read_text()
-    block = f"<!-- PUBLIC_LINKS_START -->\n- [GitHub Repository]({repository})\n- [GitHub Pages 介绍网站]({pages})\n- [v1.0.0 Release]({repository}/releases/tag/v1.0.0)\n<!-- PUBLIC_LINKS_END -->"
+    block = f"<!-- PUBLIC_LINKS_START -->\n- [GitHub Repository]({repository})\n- [GitHub Pages 介绍网站]({pages})\n- [v{VERSION} Release]({repository}/releases/tag/v{VERSION})\n<!-- PUBLIC_LINKS_END -->"
     readme.write_text(re.sub(r"<!-- PUBLIC_LINKS_START -->.*?<!-- PUBLIC_LINKS_END -->",lambda m:block,text,flags=re.S))
     run("git","config","user.name",login)
     run("git","config","user.email",owner_id+"+"+login+"@users.noreply.github.com")
@@ -39,7 +39,7 @@ def main():
     run("git","status","--short")
     run("git","ls-files")
     if run("git","diff","--cached","--quiet",check=False).returncode:
-        run("git","commit","-m","Release Course YouTube Backup v1.0.0")
+        run("git","commit","-m",f"Release Course YouTube Backup v{VERSION}")
     archive = package()
     if remote.returncode != 0:
         run("gh","repo","create",full,"--public","--source=.","--remote=origin","--push","--description","Mac 本地课程 YouTube 备份工具：固定 Private 上传、自动字幕获取，无 AI API。")
@@ -52,12 +52,12 @@ def main():
         result = run("gh","api",f"repos/{full}/pages","-X","PUT","-f","source[branch]=main","-f","source[path]=/docs",check=False)
     if result.returncode:
         print("Pages 设置失败；请在 Repository Settings → Pages 选择 main /docs。")
-    release = run("gh","release","view","v1.0.0","--repo",full,capture=True,check=False)
+    release = run("gh","release","view",f"v{VERSION}","--repo",full,capture=True,check=False)
     if release.returncode:
-        run("gh","release","create","v1.0.0",str(archive),"--repo",full,"--target","main","--title","Course YouTube Backup v1.0.0","--notes-file","RELEASE_NOTES.md")
+        run("gh","release","create",f"v{VERSION}",str(archive),"--repo",full,"--target","main","--title",f"Course YouTube Backup v{VERSION}","--notes-file","RELEASE_NOTES.md")
     else:
-        run("gh","release","upload","v1.0.0",str(archive),"--repo",full,"--clobber")
-    print("Repository: "+repository+"\nPages: "+pages+"\nRelease: "+repository+"/releases/tag/v1.0.0")
+        run("gh","release","upload",f"v{VERSION}",str(archive),"--repo",full,"--clobber")
+    print("Repository: "+repository+"\nPages: "+pages+"\nRelease: "+repository+f"/releases/tag/v{VERSION}")
 
 if __name__=="__main__":
     main()

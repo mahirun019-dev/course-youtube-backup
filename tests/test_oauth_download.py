@@ -19,13 +19,13 @@ def test_token_permissions_and_refresh(monkeypatch,tmp_path):
 
 def test_oauth_desktop_flow(monkeypatch,tmp_path):
     monkeypatch.setattr(module,'CONFIG',tmp_path)
-    (tmp_path/'client_secret.json').write_text(json.dumps({'installed':{'client_id':'synthetic'}}))
+    (tmp_path/'client_secret.json').write_text(json.dumps({'installed':{'client_id':'synthetic.apps.googleusercontent.com','client_secret':'synthetic-secret','auth_uri':'https://accounts.google.com/o/oauth2/auth','token_uri':'https://oauth2.googleapis.com/token'}}))
     creds=Mock();creds.to_json.return_value='{"synthetic":true}'
     flow=Mock();flow.run_local_server.return_value=creds
     monkeypatch.setattr(module.InstalledAppFlow,'from_client_config',lambda cfg,scopes:flow)
     YouTube().login()
     args=flow.run_local_server.call_args.kwargs
-    assert args['host']=='localhost' and args['port']==0 and args['timeout_seconds']==180
+    assert args['host']=='localhost' and args['port']==0 and args['timeout_seconds']==300 and args['open_browser'] is False and args['bind_addr']=='127.0.0.1'
     assert (tmp_path/'token.json').stat().st_mode & 0o777==0o600
 
 

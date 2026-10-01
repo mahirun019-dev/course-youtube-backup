@@ -25,6 +25,7 @@ def main():
         print("应用已在运行。请查看先前打开的 Terminal。")
         return
     sock = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     try:
         sock.bind(("127.0.0.1",8000))
     except OSError:

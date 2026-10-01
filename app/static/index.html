@@ -1,8 +1,9 @@
 <!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" href="/static/favicon.svg" type="image/svg+xml"><title>课程视频备份</title><link rel="stylesheet" href="/static/style.css"><script defer src="/static/app.js"></script></head><body><main>
 <header><div class="mark">↥</div><div><span class="eyebrow">COURSE YOUTUBE BACKUP</span><h1>课程视频备份</h1><p>备份到自己的 YouTube，留一份安心的课堂记录。</p></div><span class="local">● 本地运行</span></header>
 <section class="setup" aria-label="YouTube 连接"><div><strong id="connection">正在检查环境……</strong><p id="setup-text">OAuth 和视频处理均在这台 Mac 上运行。</p></div><button id="connect" class="secondary">连接 YouTube</button></section>
+<div id="oauth-controls" hidden><div class="oauth-actions"><a id="oauth-open" class="button" target="_blank" rel="noopener noreferrer">打开 Google 授权页面 ↗</a><button id="oauth-copy" class="secondary" type="button">复制授权链接</button></div><p>授权链接有效期约 5 分钟，仅用于当前登录。完成或超时后会自动移除。</p></div>
 <div id="notice" role="status" aria-live="polite" hidden></div>
 <form id="backup-form"><label for="url">视频链接</label><input type="url" id="url" name="url" placeholder="https://youtu.be/xxxxxxxxxxx" required autocomplete="off"><label for="title">上传标题</label><input id="title" name="title" placeholder="例如 M1、M2、M3" maxlength="100" required autocomplete="off"><div class="form-footer"><div><span class="small-label">上传权限</span><strong class="private">🔒 非公開（固定）</strong></div><button id="start" type="submit">开始备份 <span>↗</span></button></div></form>
 <section class="records"><div class="section-title"><h2>备份记录</h2><span id="count">0 个视频</span></div><p class="hint">上传后请手动检查字幕。YouTube 的生成时间不固定，也可能无法生成。</p><div id="jobs"><div class="empty">还没有备份记录。<br><span>从你的第一节课程开始。</span></div></div></section>
-<footer><span>视频只存于本地临时目录与自己的 YouTube。</span><span>不使用 AI API · v1.0.0</span></footer>
+<footer><span>视频只存于本地临时目录与自己的 YouTube。</span><span>不使用 AI API · v1.0.1</span></footer>
 </main></body></html>

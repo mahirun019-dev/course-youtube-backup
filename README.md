@@ -75,7 +75,7 @@ python3 -m venv .venv
    ```
 
    启动程序时会自动创建这个目录；不要把假示例文件当真实凭据使用，不要把凭据贴到 GitHub。
-8. 打开本地页面，点击 **连接 YouTube**。默认浏览器打开 Google 授权页；选择自己的频道所属 Google 账号并确认授权。若显示测试应用未验证提示，先确认项目是你自己创建且测试用户正确。
+8. 打开本地页面，点击 **连接 YouTube**。默认浏览器会尝试打开 Google 授权页；若没有打开，直接点击页面上的 **打开 Google 授权页面**，也可以点击 **复制授权链接** 并在浏览器中粘贴打开。链接生成后始终显示，约 5 分钟内有效，授权完成或超时后自动移除；请勿分享此临时链接。缺少或无效的 OAuth 文件会立即显示具体错误。选择自己的频道所属 Google 账号并确认授权。若显示测试应用未验证提示，先确认项目是你自己创建且测试用户正确。
 9. 授权成功后 token 保存到 `data/config/token.json`。以后通常自动刷新；被撤销或过期时点击 **重新授权**。
 
 **测试模式注意：** 带 YouTube scopes 的外部测试应用 refresh token 通常 7 天过期，届时需重新授权。要减少重复授权，可在了解 Google 要求后将 OAuth Audience 改为 Production；这可能仍显示未验证警告，是否需要验证取决于 Google 的策略。见 [OAuth refresh token expiration](https://developers.google.com/identity/protocols/oauth2#expiration)。
@@ -167,7 +167,9 @@ scripts/                     安全扫描、ZIP 打包和发布工具
 .venv/bin/python -m pytest -q
 ```
 
-测试使用临时目录与合成字节，不下载真实课程、不调用 Google、不上传任何视频。覆盖 URL / 标题、固定 private、断点续传和网络异常、成功清理 / 失败保留、历史恢复 / 损坏、ASR 选择、字幕转换与导出、本地访问保护和 Git / ZIP 安全扫描。
+测试使用临时目录与合成数据，不下载真实课程、不调用 Google、不上传任何视频。OAuth 回归测试实际启动本地回调监听器；Google token 响应由测试模拟。覆盖 URL / 标题、固定 private、断点续传和网络异常、成功清理 / 失败保留、历史恢复 / 损坏、ASR 选择、字幕转换与导出、本地访问保护和 Git / ZIP 安全扫描。
+
+`.venv/bin/python scripts/verify_oauth_ui.py` 可用真实 Chrome 验证自动打开失败后的手动按钮、复制链接、真实本地回调，以及拒绝 / 超时清理；Google 页面和 token 响应均为合成数据。
 
 UI 验证：`.venv/bin/python scripts/verify_ui.py`（需要安装 Chrome 或 `python -m playwright install chromium`）。测试截图由无凭据的新本地实例生成，使用合成 UI 场景，不包含个人课程。
 
@@ -176,7 +178,7 @@ UI 验证：`.venv/bin/python scripts/verify_ui.py`（需要安装 Chrome 或 `p
 <!-- PUBLIC_LINKS_START -->
 - [GitHub Repository](https://github.com/mahirun019-dev/course-youtube-backup)
 - [GitHub Pages 介绍网站](https://mahirun019-dev.github.io/course-youtube-backup/)
-- [v1.0.0 Release](https://github.com/mahirun019-dev/course-youtube-backup/releases/tag/v1.0.0)
+- [v1.0.1 Release](https://github.com/mahirun019-dev/course-youtube-backup/releases/tag/v1.0.1)
 <!-- PUBLIC_LINKS_END -->
 
 介绍页面源码在 `docs/`，可直接用 GitHub Pages 的 **Deploy from a branch → main → /docs**。无需 GitHub Actions 或公网后端。
@@ -188,7 +190,7 @@ gh auth login -h github.com
 .venv/bin/python scripts/publish.py
 ```
 
-发布脚本默认创建 Public `course-youtube-backup` 仓库，提交源码，push，设置 `/docs` Pages，创建 `v1.0.0` Release 并上传安全 ZIP。若仓库名称已存在且不是当前仓库的 remote，会停止，避免覆盖他人或已有项目。对已完成的发布可重复运行，跳过已存在的 Release。
+发布脚本默认创建 Public `course-youtube-backup` 仓库，提交源码，push，设置 `/docs` Pages，按 `app/config.py` 的 VERSION 创建对应 Release 并上传安全 ZIP。若仓库名称已存在且不是当前仓库的 remote，会停止，避免覆盖他人或已有项目。对已完成的发布可重复运行，跳过已存在的 Release。
 
 只打包：
 

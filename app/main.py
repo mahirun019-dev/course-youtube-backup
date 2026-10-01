@@ -27,7 +27,7 @@ csrf = secrets.token_urlsafe(32)
 work_lock = threading.Lock()
 caption_locks = {}
 lock_guard = threading.Lock()
-auth_state = {"busy":False, "message":""}
+auth_state = {"busy":False, "message":"", "authorization_url":"", "browser_opened":None}
 
 @asynccontextmanager
 async def lifespan(app):
@@ -147,31 +147,59 @@ def launch(id):
 def status():
     return {"version":config.VERSION, "token":csrf, "dependencies":dependencies(),
         "credential_present":(config.CONFIG / "client_secret.json").exists(),
-        "connected":(config.CONFIG / "token.json").exists(), "auth":auth_state.copy(),
+        "connected":(config.CONFIG / "token.json").exists(), "auth":auth_snapshot(),
         "database_error":db.error, "busy":work_lock.locked()}
 
 @app.get("/api/jobs")
 def jobs():
     return [public_job(j) for j in db.list()]
 
+def auth_snapshot():
+    with lock_guard:
+        return {k:v for k,v in auth_state.items() if not k.startswith("_")}
+
+
 @app.post("/api/auth")
 def auth():
     with lock_guard:
         if auth_state["busy"]:
-            raise AppError("授权正在进行，请完成浏览器操作。",409)
+            raise AppError("授权正在进行，请使用当前授权链接。",409)
         if work_lock.locked():
             raise AppError("备份正在进行，请完成后再重新授权。",409)
-        auth_state.update(busy=True,message="请在打开的浏览器中完成 Google 授权。")
+        # Fail synchronously: never suggest opening a browser with missing credentials.
+        youtube.oauth_config()
+        attempt = object()
+        auth_state.update(busy=True, message="正在准备 Google 授权链接……", authorization_url="", browser_opened=None, _attempt=attempt)
+
+    def ready(url, opened):
+        with lock_guard:
+            if not auth_state["busy"] or auth_state.get("_attempt") is not attempt:
+                return
+            if auth_state["authorization_url"] and auth_state["authorization_url"] != url:
+                return
+            message = "授权链接已就绪，请点击下方按钮完成 Google 授权。"
+            if opened is True:
+                message = "已尝试打开默认浏览器。如未看到 Google 授权页，请点击下方按钮。"
+            elif opened is False:
+                message = "自动打开浏览器失败，请点击下方「打开 Google 授权页面」。"
+            auth_state.update(authorization_url=url, browser_opened=opened, message=message)
+
     def run():
         try:
-            youtube.login()
-            auth_state["message"] = "YouTube 授权完成。"
+            youtube.login(on_ready=ready)
+            message = "YouTube 授权完成。"
         except Exception as exc:
-            auth_state["message"] = friendly(exc).message
+            message = friendly(exc).message
         finally:
-            auth_state["busy"] = False
-    threading.Thread(target=run,daemon=True).start()
-    return {"message":auth_state["message"]}
+            with lock_guard:
+                auth_state.update(busy=False, message=message, authorization_url="", browser_opened=None)
+    try:
+        threading.Thread(target=run,daemon=True).start()
+    except Exception:
+        with lock_guard:
+            auth_state.update(busy=False, authorization_url="", message="无法启动授权，请重试。")
+        raise AppError("无法启动授权，请重试。", 503)
+    return {"message":auth_snapshot()["message"]}
 
 @app.post("/api/jobs",status_code=202)
 def create(body:BackupInput):

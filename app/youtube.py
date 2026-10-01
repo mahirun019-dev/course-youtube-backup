@@ -3,6 +3,8 @@ import mimetypes
 import random
 import threading
 import time
+import webbrowser
+from urllib.parse import urlparse
 import requests
 from google.auth.transport.requests import Request, AuthorizedSession
 from google.oauth2.credentials import Credentials
@@ -17,7 +19,41 @@ AUTH_LOCK = threading.Lock()
 CHUNK = 8 * 1024 * 1024
 RETRYABLE = {429, 500, 502, 503, 504}
 
+class BrowserReadyFlow(InstalledAppFlow):
+    """Publish the exact SDK URL after the loopback listener has been bound."""
+    on_authorization_url = None
+
+    def authorization_url(self, **kwargs):
+        url, state = super().authorization_url(**kwargs)
+        if self.on_authorization_url:
+            self.on_authorization_url(url)
+        return url, state
+
+
 class YouTube:
+    def oauth_config(self):
+        path = CONFIG / "client_secret.json"
+        if not path.exists():
+            raise AppError("请先将 Google Desktop App OAuth 文件放到 data/config/client_secret.json，再点击连接 YouTube。")
+        try:
+            path.chmod(0o600)
+            info = json.loads(path.read_text())
+            installed = info.get("installed", {})
+            required = ("client_id", "client_secret", "auth_uri", "token_uri")
+            if not all(isinstance(installed.get(k), str) and installed[k] for k in required):
+                raise ValueError()
+            if urlparse(installed["auth_uri"]).scheme != "https" or urlparse(installed["auth_uri"]).netloc != "accounts.google.com":
+                raise ValueError()
+            if installed["token_uri"] != "https://oauth2.googleapis.com/token":
+                raise ValueError()
+            if installed["client_secret"] == "PLACEHOLDER_ONLY":
+                raise ValueError()
+            return info
+        except (ValueError, KeyError, TypeError, AttributeError):
+            raise AppError("client_secret.json 无效：请使用 Google 下载的 Desktop App OAuth 文件，不能使用示例 placeholder。")
+        except OSError:
+            raise AppError("无法读取 client_secret.json，请检查本地文件权限。")
+
     def credentials(self):
         with AUTH_LOCK:
             path = CONFIG / "token.json"
@@ -36,29 +72,37 @@ class YouTube:
             except (ValueError, KeyError):
                 raise AppError("本地 token 文件无效，请重新连接 YouTube。", 401)
 
-    def login(self):
+    def login(self, on_ready=None):
         if not AUTH_LOCK.acquire(blocking=False):
             raise AppError("Google 授权正在进行，请完成浏览器中的操作。", 409)
         try:
-            path = CONFIG / "client_secret.json"
-            if not path.exists():
-                raise AppError("请把 Google 的 Desktop App OAuth 文件放到 data/config/client_secret.json，再点击连接。")
-            path.chmod(0o600)
-            try:
-                info = json.loads(path.read_text())
-                if "installed" not in info:
-                    raise ValueError()
-                flow = InstalledAppFlow.from_client_config(info, SCOPES)
-            except (ValueError, KeyError):
-                raise AppError("client_secret.json 无效：请选择 Desktop App 类型的 OAuth 客户端。")
-            creds = flow.run_local_server(host="localhost", port=0, open_browser=True, timeout_seconds=180,
-                access_type="offline", prompt="consent", authorization_prompt_message="请在浏览器完成 Google 授权。",
-                success_message="授权完成。可以关闭此页面，回到课程视频备份工具。")
+            flow = BrowserReadyFlow.from_client_config(self.oauth_config(), SCOPES)
+
+            def ready(url):
+                if urlparse(url).scheme != "https" or urlparse(url).netloc != "accounts.google.com":
+                    raise AppError("Google 授权链接无效，请检查 OAuth 客户端配置。")
+                if on_ready:
+                    on_ready(url, None)
+                # A failed/hung OS browser launcher must not stop the callback listener.
+                def open_default_browser():
+                    try:
+                        opened = bool(webbrowser.open(url, new=1, autoraise=True))
+                    except Exception:
+                        opened = False
+                    if on_ready:
+                        on_ready(url, opened)
+                threading.Thread(target=open_default_browser, daemon=True).start()
+
+            flow.on_authorization_url = ready
+            creds = flow.run_local_server(host="localhost", bind_addr="127.0.0.1", port=0,
+                open_browser=False, timeout_seconds=300, authorization_prompt_message=None,
+                access_type="offline", prompt="consent",
+                success_message="已收到 Google 授权回调，请返回课程视频备份工具查看最终授权结果。")
             private_write(CONFIG / "token.json", creds.to_json())
         except AppError:
             raise
         except Exception:
-            raise AppError("Google 授权未完成或已超时。请确认测试用户设置，并再次连接。", 401)
+            raise AppError("Google 授权失败或已超时。请检查测试用户和浏览器中的错误，再点击连接生成新的授权链接。", 401)
         finally:
             AUTH_LOCK.release()
 
