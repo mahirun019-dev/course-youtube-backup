@@ -1,4 +1,3 @@
-from unittest.mock import Mock
 import requests
 import pytest
 from app.youtube import YouTube

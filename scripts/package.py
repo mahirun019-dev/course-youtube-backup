@@ -2,7 +2,6 @@
 import stat
 import re
 import zipfile
-from pathlib import Path
 from safety import ROOT, git, scan, inspect
 VERSION = re.search(r'^VERSION = "([0-9.]+)"', (ROOT/"app/config.py").read_text(), re.M).group(1)
 

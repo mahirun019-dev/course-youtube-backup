@@ -1,5 +1,4 @@
 import json
-import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -117,6 +116,31 @@ def test_cleanup_fail_and_no_delete_before_success(monkeypatch,db,tmp_path):
     monkeypatch.setattr(main.shutil,'rmtree',Mock(side_effect=OSError('denied')))
     main.cleanup('j');assert '删除失败' in db.get('j')['message']
 
+def test_cleanup_rejects_other_record_symlink(monkeypatch,db,tmp_path):
+    monkeypatch.setattr(main,'db',db);monkeypatch.setattr(config,'TEMP',tmp_path)
+    other=tmp_path/'other';other.mkdir();video=other/'video.mp4';video.write_bytes(b'synthetic')
+    (tmp_path/'j').symlink_to(other,target_is_directory=True)
+    db.create('j','M1','url');db.update('j',state='uploaded',video_id='abcdefghijk',temp_path=str(tmp_path/'j/video.mp4'))
+    with pytest.raises(AppError,match='符号链接'):main.cleanup('j')
+    assert video.exists() and db.get('j')['temp_path']
+
+def test_cleanup_rejects_mismatched_file_path(monkeypatch,db,tmp_path):
+    monkeypatch.setattr(main,'db',db);monkeypatch.setattr(config,'TEMP',tmp_path)
+    for id in ('j','other'):
+        (tmp_path/id).mkdir();(tmp_path/id/'video.mp4').write_bytes(b'synthetic')
+    db.create('j','M1','url');db.update('j',state='uploaded',video_id='abcdefghijk',temp_path=str(tmp_path/'other/video.mp4'))
+    with pytest.raises(AppError,match='不属于'):main.cleanup('j')
+    assert (tmp_path/'j/video.mp4').exists() and (tmp_path/'other/video.mp4').exists()
+
+@pytest.mark.parametrize('stage',['fsync','replace'])
+def test_failed_atomic_write_preserves_existing_token(monkeypatch,tmp_path,stage):
+    path=tmp_path/'token.json';path.write_text('synthetic-old-token')
+    def failure(*args):raise OSError('synthetic failure')
+    if stage=='fsync':monkeypatch.setattr(config.os,'fsync',failure)
+    else:monkeypatch.setattr(Path,'replace',failure)
+    with pytest.raises(OSError):config.private_write(path,'synthetic-new-token')
+    assert path.read_text()=='synthetic-old-token'
+
 def test_caption_api_flow(client,db,monkeypatch,tmp_path):
     db.create('j','M1','url');db.update('j',state='uploaded',video_id='own')
     yt=Mock();yt.list_captions.return_value=[track('asr-ja','ja')];yt.download_caption.return_value=SRT
@@ -146,4 +170,3 @@ def test_caption_no_tracks_and_forbidden(client,db,monkeypatch):
 def test_missing_auth_in_ui(client):
     assert client.get('/').status_code==200
     assert client.post('/api/jobs',json={'url':'https://youtu.be/abcdefghijk','title':'M1'},headers=headers(client)).status_code==401
-

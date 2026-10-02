@@ -1,6 +1,6 @@
-# Course YouTube Backup v1.1.0
+# Course YouTube Backup v1.1.0（稳定版）
 
-默认 Private 备份，新增 Gemini 使用和统一备份记录删除。
+默认 Private 备份，支持 Gemini 使用和统一备份记录删除。本次完成稳定版代码清理、测试、安全检查与文档收尾，保持现有功能和 UI。
 
 - 上传完成且自动字幕就绪后，明确确认才能临时设为 Public；复制 Gemini 用短链接，使用结束手动恢复 Private。
 - 可见性以 YouTube API 返回为准，失败只读核对，无法确认时显示待确认；没有自动公开或定时隐私修改。
@@ -11,4 +11,6 @@
 
 主程序仅在 Mac 本地运行。公开一直保持到你主动恢复；关闭应用不会自动恢复。发布 ZIP 不含 OAuth、个人课程、字幕、数据库或虚拟环境。
 
-验证：111 项自动测试，以及真实 Chrome 的 Gemini/删除、OAuth 和基础 UI 流程；YouTube 写操作使用模拟数据。
+稳定版修正：临时清理拒绝符号链接及其他任务路径；发布扫描拒绝改名的 OAuth/token JSON，示例配置仅允许固定占位值。
+
+验证：121 项自动测试，以及真实 Chrome 的 Gemini/删除、OAuth 和基础 UI 流程；YouTube 写操作使用模拟数据。

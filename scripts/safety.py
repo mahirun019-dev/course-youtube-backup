@@ -1,12 +1,22 @@
 #!/usr/bin/env python3
 """Check index + Git history without exposing secret contents."""
 import re
+import json
 import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 BAD_SUFFIXES = {".mp4", ".mkv", ".webm", ".mov", ".mp3", ".srt", ".vtt", ".sbv", ".sqlite", ".sqlite3", ".db", ".zip", ".pyc"}
 SECRET = re.compile(rb"(?:GOCSPX-[A-Za-z0-9_-]{12,}|ya29\.[A-Za-z0-9_-]{15,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----)")
+EXAMPLE = {"installed":{"client_id":"YOUR_CLIENT_ID.apps.googleusercontent.com", "project_id":"YOUR_PROJECT_ID",
+    "auth_uri":"https://accounts.google.com/o/oauth2/auth", "token_uri":"https://oauth2.googleapis.com/token",
+    "client_secret":"PLACEHOLDER_ONLY", "redirect_uris":["http://localhost"]}}
+
+def credential_json(value):
+    if isinstance(value,dict):
+        return any((k in {"client_secret","refresh_token","access_token","token","private_key"} and bool(v))
+            or credential_json(v) for k,v in value.items())
+    return isinstance(value,list) and any(credential_json(v) for v in value)
 
 def git(*args,root=ROOT):
     return subprocess.check_output(["git",*args],cwd=root)
@@ -26,8 +36,18 @@ def inspect(name, content):
         raise ValueError("不允许发布的文件：" + name)
     if SECRET.search(content):
         raise ValueError("检测到疑似真实凭据，拒绝发布：" + name)
-    if name == "client_secret.example.json" and b"PLACEHOLDER_ONLY" not in content:
-        raise ValueError("示例配置必须仅含假 placeholder。")
+    if Path(name).suffix.lower() == ".json":
+        try:
+            value = json.loads(content)
+        except (ValueError,UnicodeDecodeError):
+            if name == "client_secret.example.json":
+                raise ValueError("示例配置必须仅含假 placeholder。")
+            return
+        if name == "client_secret.example.json":
+            if value != EXAMPLE:
+                raise ValueError("示例配置必须仅含假 placeholder。")
+        elif credential_json(value):
+            raise ValueError("检测到凭据 JSON，拒绝发布：" + name)
 
 def scan(root=ROOT,history=True):
     names = git("ls-files", "-z",root=root).decode().split("\0")

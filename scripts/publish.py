@@ -4,7 +4,6 @@ import json
 import re
 import subprocess
 import sys
-from pathlib import Path
 from safety import ROOT,scan
 from package import package, VERSION
 

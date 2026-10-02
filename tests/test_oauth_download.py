@@ -1,7 +1,7 @@
 import json
 from unittest.mock import Mock
 import pytest
-from app import config,downloader
+from app import downloader
 from app import youtube as module
 from app.errors import AppError
 from app.youtube import YouTube

@@ -1,10 +1,8 @@
 from types import SimpleNamespace
 from unittest.mock import Mock
-from pathlib import Path
 import sqlite3
 import pytest
 from fastapi.testclient import TestClient
-from googleapiclient.errors import HttpError
 from app import main,config
 from app.database import Database,public_job
 from app.youtube import YouTube
@@ -77,6 +75,13 @@ def test_uncertain_visibility_not_confirmed_private(setup):
     db,yt,c,h=setup;job(db);yt.get_video.side_effect=[remote(),OSError('offline')];yt.update_privacy.side_effect=OSError('offline')
     assert c.post('/api/jobs/one/privacy',json={'target':'public','confirmed':True},headers=h).status_code==503
     assert db.get('one')['visibility_uncertain']==1
+
+def test_failed_restore_and_failed_recheck_keep_public_warning(setup):
+    db,yt,c,h=setup;job(db);db.update('one',visibility='public')
+    yt.get_video.side_effect=[remote('public'),OSError('offline')];yt.update_privacy.side_effect=OSError('offline')
+    assert c.post('/api/jobs/one/privacy',json={'target':'private','confirmed':True},headers=h).status_code==503
+    actual=db.get('one');assert actual['visibility']=='public' and actual['visibility_uncertain']==1
+    yt.update_privacy.assert_called_once()
 
 def test_restore_allowed_without_captions(setup):
     db,yt,c,h=setup;job(db,captions=False);db.update('one',visibility='public')

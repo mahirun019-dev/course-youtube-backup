@@ -129,8 +129,14 @@ def cleanup(id):
     job = db.get(id)
     if not job["video_id"] or job["state"] != "uploaded":
         raise AppError("尚未确认上传成功，不能删除临时视频。")
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", id):
+        raise AppError("任务目录标识无效，未清理临时文件。")
     folder = config.TEMP / id
     try:
+        if folder.is_symlink():
+            raise AppError("任务目录为符号链接，未清理临时文件。")
+        if job["temp_path"] and not owned_path(job["temp_path"],config.TEMP).is_relative_to(folder.resolve()):
+            raise AppError("临时文件不属于该任务目录，未清理其他记录。")
         if folder.exists():
             shutil.rmtree(owned_path(str(folder), config.TEMP))
         db.update(id, temp_path="", session_uri="", message="上传完成。YouTube 正在生成自动字幕，请稍后手动检查。")

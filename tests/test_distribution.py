@@ -1,12 +1,12 @@
-import importlib.util
 import subprocess
+import json
 import sys
 import zipfile
 from pathlib import Path
 import pytest
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'scripts'))
-from safety import inspect,scan,safe_name
+from safety import inspect,scan
 from package import package
 
 @pytest.fixture
@@ -20,6 +20,21 @@ def test_forbidden_distribution_names(name):
 
 def test_secret_detection():
     with pytest.raises(ValueError): inspect('innocent.txt',b'GOCSPX-'+b'A'*30)
+
+@pytest.mark.parametrize('value',[
+    {'installed':{'client_secret':'synthetic-secret'}},
+    {'web':{'client_secret':'synthetic-secret'}},
+    {'refresh_token':'synthetic-refresh','client_id':'synthetic'},
+    [{'nested':{'access_token':'synthetic-access'}}],
+])
+def test_renamed_credential_json_rejected(value):
+    with pytest.raises(ValueError):inspect('innocent.json',json.dumps(value).encode())
+
+def test_example_cannot_hide_credentials_with_placeholder():
+    value=json.loads((ROOT/'client_secret.example.json').read_text())
+    inspect('client_secret.example.json',json.dumps(value).encode())
+    value['installed']['refresh_token']='synthetic-refresh'
+    with pytest.raises(ValueError):inspect('client_secret.example.json',json.dumps(value).encode())
 
 def test_ignore_rules(repo):
     (repo/'.gitignore').write_text((ROOT/'.gitignore').read_text())

@@ -2,7 +2,6 @@
 """Real browser QA with an isolated data directory. No Google calls."""
 import functools
 import http.server
-import json
 import os
 import socket
 import subprocess

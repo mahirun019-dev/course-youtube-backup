@@ -10,6 +10,19 @@
 >
 > YouTube 不保证生成自动字幕。`captions.list` / `captions.download` 也可能受权限限制；没有凭据时只能验证 mock 行为，不能保证你的频道能通过 API 取得 ASR。工具会显示未就绪或真实 API 错误，并提供 YouTube Studio 字幕入口，不会伪造“字幕完成”。
 
+## 稳定版 v1.1.0
+
+本版本已完成代码清理、完整回归测试及发布安全检查；功能和界面保持现状。
+
+- **OAuth 与发布包**：`data/`、凭据、token、上传会话、课程视频、字幕和数据库均不进入 Git / Release。发布检查覆盖暂存区、Git 追踪的工作文件和全部 Git 历史，并拒绝改名的凭据 JSON；示例 OAuth JSON 仅允许固定占位值。
+- **真实可见性**：Public / Private 显示来自 YouTube API 的实际返回状态及核对时间；修改失败会重新读取，无法核对时显示待确认。恢复失败时保留公开警示，不假定已经 Private。没有自动公开或定时隐私修改。
+- **临时文件**：只有确认上传完成后才清理该任务目录，拒绝符号链接和其他任务的文件路径。上传失败保留下载文件及上传会话，供手动恢复。
+- **异常保留**：token 写入采用原子替换，写入/同步/替换失败保留原文件；中断任务和损坏数据库保留原数据。远端删除未确认成功时不清理本地数据；本地清理失败保留记录并提示重试。
+
+稳定版验证：**121 项自动测试通过**；真实 Chrome 的 OAuth、Gemini/删除、基础页面及手机布局回归通过。YouTube 写操作使用模拟数据，测试不公开或删除真实课程。依赖一致性检查通过；Git 历史、暂存区、Git 追踪的工作文件及 ZIP 安全扫描通过。
+
+更新已有安装时，请先等待当前任务结束并退出应用，备份 `data/` 到自己的本地安全位置，再替换程序文件。保留原 `data/`，不要把凭据或整个数据目录上传到 GitHub；`start.command` 会使用现有授权和历史。Public 视频在关闭应用后仍为公开，使用结束请手动恢复并核对。
+
 ## 功能
 
 - yt-dlp 当前稳定版 + ffmpeg 合并音视频，最高 1080p，无 4K / 8K。
@@ -216,7 +229,7 @@ gh auth login -h github.com
 .venv/bin/python scripts/publish.py
 ```
 
-发布脚本默认创建 Public `course-youtube-backup` 仓库，提交源码，push，设置 `/docs` Pages，按 `app/config.py` 的 VERSION 创建对应 Release 并上传安全 ZIP。若仓库名称已存在且不是当前仓库的 remote，会停止，避免覆盖他人或已有项目。对已完成的发布可重复运行，跳过已存在的 Release。
+发布脚本默认创建 Public `course-youtube-backup` 仓库，提交源码，push，设置 `/docs` Pages，按 `app/config.py` 的 VERSION 创建对应 Release 并上传安全 ZIP。若仓库名称已存在且不是当前仓库的 remote，会停止，避免覆盖他人或已有项目。发布新版本前更新版本号与发布说明。对已存在的版本，脚本只覆盖同名 ZIP，不自动移动标签或更新 Release 说明；维护既有版本时需核对发布标签、ZIP 与说明的一致性。
 
 只打包：
 
@@ -230,6 +243,5 @@ Release ZIP 位于项目父目录，只包含 Git 跟踪的运行源码、文档
 ## 参考与许可证
 
 MIT，见 [LICENSE](LICENSE)。下载功能依赖 [yt-dlp](https://github.com/yt-dlp/yt-dlp)；上传使用 [YouTube resumable upload 官方协议](https://developers.google.com/youtube/v3/guides/using_resumable_upload_protocol)，OAuth 使用 [Desktop loopback redirect](https://developers.google.com/identity/protocols/oauth2/native-app)。GitHub Pages 只托管静态内容，见 [GitHub Pages 官方说明](https://docs.github.com/en/pages/getting-started-with-github-pages/what-is-github-pages)。
-
 
 临时字幕诊断：`COURSE_CAPTION_DEBUG=1 ./start.command`。每次手动检查字幕时，脱敏 metadata 记录到 `data/history/captions-diagnostic.log`，仅包含哈希化 ID、trackKind、语言、状态等白名单字段，不记录 token、credentials、字幕文本或字幕名称。退出后普通启动即关闭诊断；日志不进入 Git 或 Release。
