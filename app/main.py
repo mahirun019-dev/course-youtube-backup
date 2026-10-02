@@ -1,11 +1,13 @@
 import logging
+import re
 import secrets
 import shutil
 import threading
 import time
 import uuid
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
+from typing import Literal
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -15,7 +17,7 @@ from starlette.concurrency import run_in_threadpool
 from . import config
 from .database import Database, public_job, now
 from .downloader import validate_url, download, dependencies
-from .captions import choose_asr, srt_to_txt, safe_name
+from .captions import choose_asr, asr_tracks, is_japanese, normalized, srt_to_txt, safe_name
 from .youtube import YouTube
 from .errors import AppError, friendly
 
@@ -84,6 +86,39 @@ class RetryInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     restart_expired: bool = False
 
+def job_lock(id):
+    with lock_guard:
+        return caption_locks.setdefault(id, threading.Lock())
+
+
+@contextmanager
+def operation(id):
+    lock = job_lock(id)
+    if not lock.acquire(blocking=False):
+        raise AppError("该记录已有操作进行中，请稍后重试。",409)
+    try:
+        yield
+    finally:
+        lock.release()
+
+
+def completed(job):
+    return bool(re.fullmatch(r"[A-Za-z0-9_-]{11}", job["video_id"] or "")) and job["state"] == "uploaded" and not job["remote_missing"] and not job["remote_deleted"]
+
+
+class PrivacyInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    target: Literal["public", "private"]
+    confirmed: bool = False
+
+
+class DeleteInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    mode: Literal["local", "remote"]
+    confirmed: bool = False
+    confirmation_title: str = ""
+
+
 def owned_path(value, base):
     p = Path(value).resolve()
     if not p.is_relative_to(base.resolve()) or p == base.resolve():
@@ -122,7 +157,8 @@ def worker(id):
         job = db.get(id)
         video_id = youtube.upload(job,path,lambda **kw: db.update(id,**kw))
         # Commit the remote ID before deleting anything locally.
-        db.update(id,video_id=video_id,uploaded_at=now(),state="uploaded",progress=100,caption_state="waiting")
+        db.update(id,video_id=video_id,uploaded_at=now(),state="uploaded",progress=100,caption_state="waiting",
+            visibility="private", visibility_uncertain=0, visibility_checked_at=now(), remote_upload_status="uploaded")
         cleanup(id)
     except Exception as exc:
         log.error("备份任务失败：%s", type(exc).__name__)
@@ -219,6 +255,10 @@ def create(body:BackupInput):
 
 @app.post("/api/jobs/{id}/retry",status_code=202)
 def retry(id:str,body:RetryInput):
+    with operation(id):
+        return retry_locked(id,body)
+
+def retry_locked(id,body):
     job = db.get(id)
     if job["state"] != "failed" or job["video_id"]:
         raise AppError("只能重试失败且尚未确认上传的任务。",409)
@@ -241,12 +281,12 @@ def retry(id:str,body:RetryInput):
 
 @app.post("/api/jobs/{id}/cleanup")
 def clean(id:str):
-    cleanup(id)
+    with operation(id):
+        cleanup(id)
     return {"message":"临时文件清理已处理。"}
 
 def caption_action(id, fetch):
-    with lock_guard:
-        lock = caption_locks.setdefault(id,threading.Lock())
+    lock = job_lock(id)
     if not lock.acquire(blocking=False):
         raise AppError("该视频的字幕操作正在进行。",409)
     try:
@@ -274,12 +314,29 @@ def caption_action(id, fetch):
             if (datetime.now(timezone.utc)-datetime.fromisoformat(job["checked_at"])).total_seconds()<60:
                 raise AppError("字幕检查间隔至少 60 秒，避免消耗配额。",429)
         db.update(id,checked_at=now())
-        track = choose_asr(youtube.list_captions(job["video_id"]))
+        items = youtube.list_captions(job["video_id"])
+        track = choose_asr(items)
         if track:
-            db.update(id,caption_id=track["id"],language=track["snippet"]["language"],caption_state="saved" if job["txt_path"] else "ready",message="自动字幕已生成。" if track["snippet"]["language"].split("-")[0]=="ja" else "未找到日语字幕，将使用其他语言的自动字幕。")
-            return {"message":"自动字幕已生成。"}
-        db.update(id,caption_state="saved" if job["txt_path"] else "waiting",message="API 尚未返回可用自动字幕。YouTube 可能仍在生成，也可能未生成；请稍后检查或打开 YouTube Studio。")
-        return {"message":"尚未发现可用自动字幕。"}
+            language = track["snippet"].get("language", "")
+            message = "自动字幕已生成。" if is_japanese(language) else "未找到可获取的日语轨道，将使用其他语言的自动字幕。"
+            db.update(id, caption_id=track["id"], language=language,
+                caption_state="saved" if job["txt_path"] else "ready", message=message)
+            return {"message":message}
+        detected = asr_tracks(items)
+        if detected:
+            states = sorted({normalized(x.get("snippet", {}).get("status")) or "未提供" for x in detected})
+            draft = any(x.get("snippet", {}).get("isDraft") is True for x in detected)
+            message = "API 已返回自动字幕轨道，但尚不可获取。状态：" + "、".join(states) + ("；包含草稿轨道。" if draft else "。")
+            state = "processing"
+        elif not items:
+            message = "API 尚未同步：captions.list 当前返回空数组。请以 YouTube Studio 的字幕状态为准，稍后手动检查。"
+            state = "api_pending"
+        else:
+            message = f"API 返回 {len(items)} 条字幕，但尚未返回 ASR 自动轨道。请以 YouTube Studio 的字幕状态为准，稍后手动检查。"
+            state = "api_pending"
+        db.update(id, caption_state="saved" if job["txt_path"] else state,
+            caption_id=job["caption_id"] if job["txt_path"] else "", message=message)
+        return {"message":message}
     except Exception as exc:
         err = friendly(exc,caption=True)
         db.update(id,message=err.message)
@@ -294,6 +351,146 @@ async def check_caption(id:str):
 @app.post("/api/jobs/{id}/captions/fetch")
 async def fetch_caption(id:str):
     return await run_in_threadpool(caption_action,id,True)
+
+def record_visibility(id, video):
+    job = db.get(id)
+    if not video:
+        db.update(id, visibility="unavailable", visibility_uncertain=0, visibility_checked_at=now(),
+            remote_missing=1, state="orphan" if job["state"] == "uploaded" else job["state"],
+            message="YouTube API 未找到此视频，已标为孤立记录；可仅删除本地记录。")
+        return
+    remote = video.get("status", {})
+    visibility = remote.get("privacyStatus")
+    if visibility not in ("private", "public", "unlisted"):
+        db.update(id, visibility_uncertain=1)
+        raise AppError("YouTube 未提供有效可见性，当前状态待确认。",502)
+    state = job["state"]
+    if remote.get("uploadStatus") in ("failed", "rejected", "deleted"):
+        state = "orphan"
+    elif state == "orphan" and remote.get("uploadStatus") in ("uploaded", "processed"):
+        state = "uploaded"
+    db.update(id, visibility=visibility, visibility_uncertain=0, visibility_checked_at=now(),
+        remote_missing=0, remote_upload_status=remote.get("uploadStatus", ""), state=state)
+
+
+@app.post("/api/visibility/sync")
+def sync_visibility():
+    jobs = [j for j in db.list() if re.fullmatch(r"[A-Za-z0-9_-]{11}", j["video_id"] or "") and j["state"] not in ("queued","downloading","uploading") and not j["remote_deleted"]]
+    count = 0
+    for start in range(0,len(jobs),50):
+        locked = []
+        try:
+            for job in jobs[start:start+50]:
+                lock = job_lock(job["id"])
+                if lock.acquire(blocking=False):
+                    locked.append((job,lock))
+            if not locked:
+                continue
+            videos = {v["id"]:v for v in youtube.get_videos([j["video_id"] for j,_ in locked])}
+            for job,_ in locked:
+                record_visibility(job["id"], videos.get(job["video_id"]))
+                count += 1
+        except Exception as exc:
+            for job,_ in locked:
+                db.update(job["id"], visibility_uncertain=1)
+            raise friendly(exc)
+        finally:
+            for _,lock in locked:
+                lock.release()
+    return {"message":f"已从 YouTube 核对 {count} 条记录的可见性。"}
+
+
+@app.post("/api/jobs/{id}/privacy")
+def privacy(id:str, body:PrivacyInput):
+    if not body.confirmed:
+        raise AppError("请先明确确认本次可见性操作。",400)
+    with operation(id):
+        job = db.get(id)
+        if not completed(job):
+            raise AppError("只有已成功上传的有效视频才能修改可见性。",409)
+        if body.target == "public" and (job["caption_state"] not in ("ready","saved") or not job["caption_id"]):
+            raise AppError("自动字幕生成并被 API 确认后才能临时公开。",409)
+        # Mark uncertain BEFORE contacting Google: a lost response cannot leave a false Private badge.
+        db.update(id, visibility_uncertain=1)
+        try:
+            before = youtube.get_video(job["video_id"])
+            record_visibility(id,before)
+            if not before or not completed(db.get(id)):
+                raise AppError("YouTube 尚未确认有效上传，本地记录已保留。",409)
+            if before["status"]["privacyStatus"] != body.target:
+                db.update(id,visibility_uncertain=1)
+                result = youtube.update_privacy(before,body.target)
+                record_visibility(id,result)
+            current = db.get(id)
+            if current["visibility"] != body.target:
+                raise AppError("YouTube 未接受目标可见性；页面保留 API 实际返回状态。",409)
+            return {"message":"已设为公开，请在 Gemini 使用结束后恢复为非公开。" if body.target=="public" else "已恢复为非公开。", "job":public_job(current)}
+        except Exception as exc:
+            # Reconcile any ambiguous update, without sending a second write request.
+            try:
+                record_visibility(id,youtube.get_video(job["video_id"]))
+            except Exception:
+                db.update(id,visibility_uncertain=1)
+            err = friendly(exc)
+            db.update(id,message=err.message)
+            raise err
+
+
+def remove_local_data(job):
+    id = job["id"]
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", id):
+        raise AppError("任务目录标识无效，未删除本地数据。")
+    # Touch only this record's directories; recorded files must be contained in them.
+    folders = (config.SUBTITLES / id, config.TEMP / id)
+    for field,base in (("srt_path",config.SUBTITLES),("txt_path",config.SUBTITLES),("temp_path",config.TEMP)):
+        if job[field]:
+            path = owned_path(job[field],base)
+            if not path.is_relative_to((base / id).resolve()):
+                raise AppError("记录文件不属于该任务目录，未删除其他记录。")
+    for folder,base in zip(folders,(config.SUBTITLES,config.TEMP)):
+        if folder.is_symlink():
+            raise AppError("任务目录为符号链接，未删除本地数据。")
+        if folder.exists():
+            owned_path(str(folder),base)
+    for folder,base in zip(folders,(config.SUBTITLES,config.TEMP)):
+        if folder.exists():
+            shutil.rmtree(owned_path(str(folder),base))
+
+
+@app.post("/api/jobs/{id}/delete")
+def delete_record(id:str, body:DeleteInput):
+    if not body.confirmed:
+        raise AppError("请先确认删除记录。",400)
+    with operation(id):
+        job = db.get(id)
+        if job["state"] in ("queued","downloading","uploading"):
+            raise AppError("任务仍在进行中，不能删除。请等待任务结束。",409)
+        if body.mode == "remote":
+            if body.confirmation_title != job["title"]:
+                raise AppError("危险操作需要二次确认并输入完整视频标题。",400)
+            if not job["remote_deleted"]:
+                if not completed(job):
+                    raise AppError("此记录没有已确认上传的视频，请仅删除本地记录。",409)
+                try:
+                    if youtube.delete_video(job["video_id"]) is not True:
+                        raise AppError("YouTube 没有确认删除成功，本地记录已保留。",502)
+                except Exception as exc:
+                    err = friendly(exc)
+                    db.update(id,message="YouTube 删除失败，本地记录已保留。"+err.message)
+                    raise err
+                # Durable marker lets local cleanup be retried without deleting a second video.
+                db.update(id,remote_deleted=1,visibility="deleted",visibility_uncertain=0,visibility_checked_at=now())
+                job = db.get(id)
+        try:
+            remove_local_data(job)
+            db.delete(id)
+        except Exception as exc:
+            err = friendly(exc)
+            message = "YouTube 已删除，但本地清理未完成。记录已保留，请重试仅删除本地记录。" if job["remote_deleted"] else "本地清理失败，记录已保留，请检查文件权限后重试。"
+            db.update(id,message=message)
+            raise AppError(message,err.status)
+        return {"message":"已删除 YouTube 视频和本地记录。" if body.mode=="remote" else "已删除本地记录；YouTube 视频保持不变。"}
+
 
 @app.get("/api/jobs/{id}/subtitle/{fmt}")
 def subtitle(id:str,fmt:str):

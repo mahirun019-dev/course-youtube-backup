@@ -1,6 +1,6 @@
 # Course YouTube Backup · 课程视频备份工具
 
-在自己的 Mac 上备份获准保存的 YouTube 课程视频：输入链接和 **自己指定的标题** → 下载 → 上传到自己的 **Private** YouTube → 成功后删除临时视频 → 手动检查 YouTube 自动字幕 → 导出 / 复制文字。
+在自己的 Mac 上备份获准保存的 YouTube 课程视频：输入链接和 **自己指定的标题** → 下载 → 上传到自己的 **Private** YouTube → 成功后删除临时视频 → 手动检查 YouTube 自动字幕 → 确认后临时公开供 Gemini 使用 → 一键恢复 Private。字幕导出和复制保留为辅助功能。
 
 ![应用实际界面](docs/screenshot.png)
 
@@ -15,13 +15,15 @@
 - yt-dlp 当前稳定版 + ffmpeg 合并音视频，最高 1080p，无 4K / 8K。
 - 只接受单个 YouTube 视频 URL；播放列表参数被去掉，直播需结束后再备份。
 - 上传标题必须手动输入，原视频标题仅作为确认信息。
-- 后端常量 `YOUTUBE_PRIVACY = "private"`；接口拒绝额外权限参数，UI 无公开选项。
+- 上传始终使用后端常量 `YOUTUBE_PRIVACY = "private"`；上传接口拒绝额外权限参数。自动字幕就绪后可在独立区域明确确认临时公开，使用完手动恢复。
 - Google Desktop OAuth，token 和 client secret 仅在本机保存，目录 0700 / token 0600。
 - YouTube 官方 resumable upload，8 MiB 分块；按服务器确认的字节显示进度。
 - 本机保存上传会话，重试和重启后先查询 YouTube 上传状态，继续传输剩余字节。
 - 上传确认返回 Video ID 和 private 后记录历史，再删除临时视频。失败保留文件，支持重试。
-- 手动字幕检查，优先日语 ASR，次选其他语言 ASR；只接受 `serving` 的非草稿轨道。
+- 手动字幕检查，优先日语 ASR，次选其他语言 ASR；兼容 API 实际返回的小写 `asr` 和大写 `ASR`，优先日语 BCP-47 标签；拒绝明确标记为 syncing / failed 或草稿的轨道。
 - `captions.download(tfmt="srt")`，保存 SRT 和去标签的 TXT，可一键复制。
+- Gemini 使用：确认后公开、复制短链接、一键恢复 Private；历史显示 YouTube API 实际核对的可见性。
+- 每条历史可仅删除本地数据；成功上传的视频还可二次危险确认后删除 YouTube 视频，API 失败保留记录。
 - SQLite 历史，刷新浏览器或重启不丢失已保存记录。
 
 ## macOS 环境与首次安装
@@ -66,7 +68,7 @@ python3 -m venv .venv
    - `https://www.googleapis.com/auth/youtube.upload`
    - `https://www.googleapis.com/auth/youtube.force-ssl`
 
-   字幕管理需要 `youtube.force-ssl`。Google 会显示它允许管理 YouTube 数据，本程序只调用上传、字幕列表和字幕下载。不会删除频道视频或公开视频。
+   字幕管理需要 `youtube.force-ssl`。Google 会显示它允许管理 YouTube 数据，本程序调用上传、字幕列表/下载、视频状态读取，以及你明确操作后的隐私修改/视频删除。不会自动公开或自动删除 YouTube 视频。
 6. 在 **Clients / 客户端 → Create client / 创建客户端**（或 **Credentials / 凭据 → Create credentials → OAuth client ID**），类型选择 **Desktop app / 桌面应用**，不要选择 Web Application，不需要填写公网回调 URL。
 7. 下载 OAuth JSON，重命名为 **client_secret.json**，放到项目中的：
 
@@ -92,11 +94,33 @@ python3 -m venv .venv
 6. 成功后显示 YouTube 链接、非公開状态，并删除临时视频；字幕不会立即完成。
 7. 等待后点击 **检查字幕**。不会自动调用字幕 API，重复手动检查至少间隔 60 秒。
 8. 找到日语 ASR 时显示日本語；没有日语但有其他可用 ASR 时显示实际语言。
-9. 点击 **获取字幕**。保存完成后可以 **复制字幕**、**下载 TXT**、**下载 SRT**。
+9. 自动字幕就绪后，在 **Gemini 使用** 中点击 **临时设为公开**，阅读公开可访问的警告并确认。只有 API 返回 Public 才显示公开状态和 **复制 Gemini 用链接**。
+10. 复制 `https://youtu.be/<videoId>` 给 Gemini。使用结束点击 **恢复为非公开**，API 确认 Private 后显示非公開。
+11. 如需本地字幕，展开 **字幕文件（辅助功能）**，获取字幕后复制或下载 TXT / SRT。
 
-字幕检查不是无限等待任务：API 没有返回 ASR 时会显示尚未发现可用字幕。几小时后仍没有时，请进入 YouTube Studio 检查视频语言、处理状态和自动字幕。清晰音频和正确语言有助于 YouTube 生成；生成由 YouTube 决定，本工具不能强制。
+字幕检查不是无限等待任务：API 返回空数组时明确显示「API 尚未同步」，不会据此断言 Studio 的字幕尚未生成；已经返回 ASR 但轨道不可获取时显示实际状态。几小时后仍没有时，请进入 YouTube Studio 检查视频语言、处理状态和自动字幕。清晰音频和正确语言有助于 YouTube 生成；生成由 YouTube 决定，本工具不能强制。
 
 官方 API 返回 403 时，不会改用爬虫绕过私密字幕权限。点击 **YouTube Studio**，在该视频字幕页面确认自动字幕是否存在，并使用 Studio 可用的下载操作。官方 [`captions.download`](https://developers.google.com/youtube/v3/docs/captions/download) 要求编辑视频权限；自动轨道可见不代表一定能成功下载。
+
+## Gemini 使用与可见性
+
+默认 Private；没有上传完成或没有可用 ASR 的视频不提供公开按钮。公开必须逐次确认，没有自动公开、定时公开或后台修改隐私。**Public 会一直保持，直到你主动恢复**；关闭程序不会自动恢复。
+
+隐私修改采用官方 [`videos.update(part="status")`](https://developers.google.com/youtube/v3/docs/videos/update)，保留可修改的其他状态字段，使用 ETag 防止覆盖并发修改，不创建定时发布。显示依据 API 返回的 `privacyStatus`，不先改 UI。响应丢失时只读取状态进行核对；无法核对时显示「待确认」，保留上次状态，不假定 Private。重启后先标记待确认，页面连接后只读核对一次；也可点击「核对可见性」。状态旁标注 API 确认时间，在 Studio 修改后应再次核对。
+
+Google 对未审核 API 项目或频道可能限制公开视频。错误会显示在页面，实际可见性保持以 API 核对结果为准。Public 链接是否能被 Gemini 读取仍取决于 Gemini 本身的支持及访问限制；本工具不调用 Gemini API。
+
+## 删除备份记录
+
+每条记录右侧的 **删除** 均先确认，不针对某个标题设置规则。
+
+- 未完成上传、没有有效 Video ID 或被 API 确认为孤立记录：只显示「删除这条本地记录？」和「删除记录」。清理该任务自己的历史、TXT/SRT 与临时目录。
+- 成功上传且有有效 Video ID：可选 **仅删除本地记录**，YouTube 上的视频保持不变；或 **删除 YouTube 视频和本地记录**。
+- 删除 YouTube 视频需要第二次危险确认，显示标题并要求输入完整标题。官方 [`videos.delete`](https://developers.google.com/youtube/v3/docs/videos/delete) 确认 HTTP 204 后才删除本地数据；API 拒绝或响应不确定时保留本地记录与文件。
+- 远端删除成功但本地清理失败时，记录保留「YouTube 已删除」标记，可重试仅删除本地记录，不再次删除远端。
+- 进行中的任务暂不可删除。删除一条记录不会删除其他任务目录；仅删本地记录后无法从该工具恢复这条记录。
+
+API 核对发现视频不存在或远端上传失败时统一标为孤立记录，不自动删除。远端未找到也可能表示当前授权频道无法访问该视频，请核对账号后决定是否删除本地记录。
 
 ## 本地文件
 
@@ -146,19 +170,19 @@ scripts/                     安全扫描、ZIP 打包和发布工具
 | 历史数据库损坏 | 退出，备份 `data/history`，移走损坏数据库后重启；不自动覆盖原文件 |
 | 剪贴板失败 | 使用下载 TXT，打开文件自行复制 |
 
-[`captions.list`](https://developers.google.com/youtube/v3/docs/captions/list) 每次 50 单位，[`captions.download`](https://developers.google.com/youtube/v3/docs/captions/download) 每次 200 单位；配额规则可能变化，以 Console 和官方文档为准。页面的 2 秒刷新只读取本机 SQLite，不调用 YouTube。
+[`captions.list`](https://developers.google.com/youtube/v3/docs/captions/list) 每次 50 单位，[`captions.download`](https://developers.google.com/youtube/v3/docs/captions/download) 每次 200 单位；配额规则可能变化，以 Console 和官方文档为准。页面的 2 秒刷新只读取本机状态；每次新页面连接后另外进行一次只读视频状态核对，手动「核对可见性」也读取 YouTube。字幕检查和隐私/删除操作均由你手动触发。
 
 ## 隐私与安全
 
 - 不存在开发者视频服务器。主程序仅连接 YouTube / Google 与视频下载源。
 - 仅监听 loopback，不开放公网；Host / Origin 验证、跨站请求阻止和本地写入 token 防止网页触发上传。
-- 上传权限来自后端常量，额外前端字段被拒绝。API 异常不回退为公开。
+- 上传权限来自后端常量，额外前端字段被拒绝。公开需明确确认，远端删除需二次确认；API 异常显示核对后的状态或待确认。
 - token 文件写入采用临时文件替换和 0600 权限；这不是文件内容加密，请保护本机账号。
 - 日志不记录 OAuth token、上传会话 URL 或老师的原链接。
 - `.gitignore` 排除整个 `data/`、OAuth、`.env`、视频、字幕、数据库、虚拟环境与缓存。
 - 发布脚本扫描 Git index 和历史，再按追踪文件打包，ZIP 不包含 `.venv` 或个人数据。
 - 如果真实凭据曾进入 commit，不要只加 ignore：移除 Git 历史并在 Google 撤销 / 重新生成凭据。
-- 不使用 AI API，不做摘要或作业回答；复制文字后由你自行决定如何使用。
+- 不使用 AI API，不做摘要或作业回答；由你自行将公开视频链接或字幕用于 Gemini 等工具。
 
 ## 测试与开发
 
@@ -167,18 +191,20 @@ scripts/                     安全扫描、ZIP 打包和发布工具
 .venv/bin/python -m pytest -q
 ```
 
-测试使用临时目录与合成数据，不下载真实课程、不调用 Google、不上传任何视频。OAuth 回归测试实际启动本地回调监听器；Google token 响应由测试模拟。覆盖 URL / 标题、固定 private、断点续传和网络异常、成功清理 / 失败保留、历史恢复 / 损坏、ASR 选择、字幕转换与导出、本地访问保护和 Git / ZIP 安全扫描。
+测试使用临时目录与合成数据，不下载真实课程、不调用 Google、不上传任何视频。OAuth 回归测试实际启动本地回调监听器；Google token 响应由测试模拟。覆盖 URL / 标题、固定 private、断点续传和网络异常、成功清理 / 失败保留、历史恢复 / 损坏、ASR 选择、字幕转换与导出、本地访问保护、隐私变更成功/拒绝/响应丢失、无 ID / 仅本地 / 远端删除成功与失败，以及 Git / ZIP 安全扫描。
 
 `.venv/bin/python scripts/verify_oauth_ui.py` 可用真实 Chrome 验证自动打开失败后的手动按钮、复制链接、真实本地回调，以及拒绝 / 超时清理；Google 页面和 token 响应均为合成数据。
 
 UI 验证：`.venv/bin/python scripts/verify_ui.py`（需要安装 Chrome 或 `python -m playwright install chromium`）。测试截图由无凭据的新本地实例生成，使用合成 UI 场景，不包含个人课程。
+
+`.venv/bin/python scripts/verify_gemini_ui.py` 使用真实 Chrome 和隔离数据库，验证公开确认、复制 Gemini 链接、恢复、两级删除确认及失败保留；所有 YouTube 状态与写操作使用合成数据。
 
 ## GitHub / Pages / Release
 
 <!-- PUBLIC_LINKS_START -->
 - [GitHub Repository](https://github.com/mahirun019-dev/course-youtube-backup)
 - [GitHub Pages 介绍网站](https://mahirun019-dev.github.io/course-youtube-backup/)
-- [v1.0.1 Release](https://github.com/mahirun019-dev/course-youtube-backup/releases/tag/v1.0.1)
+- [v1.1.0 Release](https://github.com/mahirun019-dev/course-youtube-backup/releases/tag/v1.1.0)
 <!-- PUBLIC_LINKS_END -->
 
 介绍页面源码在 `docs/`，可直接用 GitHub Pages 的 **Deploy from a branch → main → /docs**。无需 GitHub Actions 或公网后端。
@@ -204,3 +230,6 @@ Release ZIP 位于项目父目录，只包含 Git 跟踪的运行源码、文档
 ## 参考与许可证
 
 MIT，见 [LICENSE](LICENSE)。下载功能依赖 [yt-dlp](https://github.com/yt-dlp/yt-dlp)；上传使用 [YouTube resumable upload 官方协议](https://developers.google.com/youtube/v3/guides/using_resumable_upload_protocol)，OAuth 使用 [Desktop loopback redirect](https://developers.google.com/identity/protocols/oauth2/native-app)。GitHub Pages 只托管静态内容，见 [GitHub Pages 官方说明](https://docs.github.com/en/pages/getting-started-with-github-pages/what-is-github-pages)。
+
+
+临时字幕诊断：`COURSE_CAPTION_DEBUG=1 ./start.command`。每次手动检查字幕时，脱敏 metadata 记录到 `data/history/captions-diagnostic.log`，仅包含哈希化 ID、trackKind、语言、状态等白名单字段，不记录 token、credentials、字幕文本或字幕名称。退出后普通启动即关闭诊断；日志不进入 Git 或 Release。

@@ -12,6 +12,10 @@ def api_error(status, reason="", caption=False):
         return AppError("YouTube API 配额或上传额度已用完。请在 Google Cloud Console 查看额度，稍后重试。", 429)
     if status == 401 or reason in ("invalid_grant", "authError"):
         return AppError("Google 授权已过期或被撤销，请重新连接 YouTube。", 401)
+    if reason == "forbiddenPrivacySetting":
+        return AppError("YouTube 拒绝修改可见性（403）。请检查频道权限及 API 项目审核限制；可在 Studio 查看实际状态后点击核对可见性。",403)
+    if status == 412:
+        return AppError("视频状态已被其他操作修改。已重新核对实际状态，请确认后重试。",409)
     if status == 403:
         msg = "字幕 API 权限不足（403）。请确认登录的是视频所属频道；自动字幕可能无法通过 API 下载，可在 YouTube Studio 查看并下载字幕。" if caption else "YouTube 拒绝此操作。请确认已启用 API、授权范围及频道权限。"
         return AppError(msg, 403)

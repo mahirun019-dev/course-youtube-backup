@@ -50,7 +50,7 @@ def main():
                     else:route.continue_()
                 page.route('**/api/jobs',jobs_route)
                 page.route('**/api/jobs/synthetic/subtitle/txt',lambda r:r.fulfill(status=200,content_type='text/plain; charset=utf-8',body='00:00:13\n合成课堂字幕'))
-                page.evaluate('refresh()');page.get_by_role('button',name='复制字幕').wait_for()
+                page.evaluate('refresh()');page.locator('.subtitle-tools summary').click();page.get_by_role('button',name='复制字幕').wait_for()
                 page.get_by_role('button',name='复制字幕').click()
                 expect(page.locator("#notice")).to_contain_text("已复制")
                 assert '合成课堂字幕' in page.evaluate('navigator.clipboard.readText()')
@@ -63,7 +63,7 @@ def main():
                 threading.Thread(target=server.serve_forever,daemon=True).start()
                 try:
                     site=context.new_page();site.goto(f'http://localhost:{server.server_port}');site.wait_for_load_state('networkidle')
-                    assert site.locator('img').evaluate('(img)=>img.complete && img.naturalWidth>0')
+                    assert site.locator('img').evaluate_all('(imgs)=>imgs.length===2 && imgs.every(img=>img.complete && img.naturalWidth>0)')
                     assert site.get_by_text('本工具在用户自己的 Mac 本地运行。视频和 OAuth 信息不会发送到本项目的服务器。').is_visible()
                     site.set_viewport_size({'width':390,'height':844})
                     assert site.evaluate('document.documentElement.scrollWidth <= window.innerWidth')

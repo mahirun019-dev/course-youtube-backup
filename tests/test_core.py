@@ -137,11 +137,11 @@ def test_caption_no_tracks_and_forbidden(client,db,monkeypatch):
     db.create('j','M1','url');db.update('j',state='uploaded',video_id='own')
     yt=Mock();yt.list_captions.return_value=[];monkeypatch.setattr(main,'youtube',yt)
     assert client.post('/api/jobs/j/captions/check',json={},headers=headers(client)).status_code==200
-    assert db.get('j')['caption_state']=='waiting'
+    assert db.get('j')['caption_state']=='api_pending'
     db.update('j',checked_at='')
     yt.list_captions.side_effect=AppError('字幕 API 权限不足',403)
     assert client.post('/api/jobs/j/captions/check',json={},headers=headers(client)).status_code==403
-    assert db.get('j')['caption_state']=='waiting'
+    assert db.get('j')['caption_state']=='api_pending'
 
 def test_missing_auth_in_ui(client):
     assert client.get('/').status_code==200
