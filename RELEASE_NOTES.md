@@ -1,16 +1,15 @@
-# Course YouTube Backup v1.1.0（稳定版）
+# Course YouTube Backup v1.2.0
 
-默认 Private 备份，支持 Gemini 使用和统一备份记录删除。本次完成稳定版代码清理、测试、安全检查与文档收尾，保持现有功能和 UI。
+双击「课程视频备份.app」即可使用，无需每天打开 Terminal 或运行 start.command。
 
-- 上传完成且自动字幕就绪后，明确确认才能临时设为 Public；复制 Gemini 用短链接，使用结束手动恢复 Private。
-- 可见性以 YouTube API 返回为准，失败只读核对，无法确认时显示待确认；没有自动公开或定时隐私修改。
-- 每条记录均可确认后仅删除本地历史/字幕/临时数据；远端删除必须二次危险确认并输入标题，API 确认 HTTP 204 后才清理本地数据。
-- 失败保留本地记录和文件，统一识别孤立记录，保护其他记录。
-- 修复真实 API 小写 asr 与日语 BCP-47 字幕筛选，空字幕列表显示 API 尚未同步。
-- TXT / SRT / 复制字幕保留为辅助功能，OAuth 手动授权入口继续保留。
+- 后台启动现有 FastAPI，服务就绪后打开默认浏览器；已运行时只打开页面，不重复启动。
+- App 提供停止服务，关闭窗口或 Command+Q 会先安全停止；备份/授权/视频操作忙碌时拒绝退出。
+- 保留现有项目 data/ 中的 OAuth、数据库、字幕、历史和临时文件，不迁移或重置。
+- 可选登录启动在 App 中明确确认后开启，默认关闭；支持关闭，KeepAlive=false，不自动拉起，不自动公开任何视频。
+- 网页 UI 和现有下载、上传、字幕、Gemini、删除业务保持现状。
 
-主程序仅在 Mac 本地运行。公开一直保持到你主动恢复；关闭应用不会自动恢复。发布 ZIP 不含 OAuth、个人课程、字幕、数据库或虚拟环境。
+Release ZIP 包含 Apple Silicon / Intel universal 原生 App，要求 macOS 13+。App 为本地 ad-hoc 签名，未做 Apple 公证；首次打开可能需在系统设置的隐私与安全性中确认。Python、ffmpeg、Deno/Node 的首次环境配置仍按 README；日常使用不需要 Terminal。
 
-稳定版修正：临时清理拒绝符号链接及其他任务路径；发布扫描拒绝改名的 OAuth/token JSON，示例配置仅允许固定占位值。
+发布包不包含 OAuth 凭据、个人课程、字幕、数据库或 .venv。start.command 保留为备用入口。
 
-验证：121 项自动测试，以及真实 Chrome 的 Gemini/删除、OAuth 和基础 UI 流程；YouTube 写操作使用模拟数据。
+验证：139 项自动测试通过；实际 Finder 冷启动、重复双击复用 PID、Safari 自动打开、停止按钮与关闭 App 无进程残留；原 OAuth/历史/字幕保留。真实临时 LaunchAgent 两次载入启动/停止通过，模拟重新登录和旧 PID。未实际重启 Mac，日常登录启动保持关闭。

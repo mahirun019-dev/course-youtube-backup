@@ -25,6 +25,8 @@ def safe_name(name):
     p = Path(name)
     if any(x in {"data", ".venv", "__pycache__", ".git", ".pytest_cache", "work"} for x in p.parts):
         return False
+    if any(x.endswith(".app") for x in p.parts):
+        return False
     if p.suffix.lower() in BAD_SUFFIXES or ".sqlite" in p.name:
         return False
     if p.name == "client_secret.example.json":

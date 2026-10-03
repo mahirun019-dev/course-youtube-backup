@@ -7,7 +7,7 @@ TEMP = DATA / "temp"
 SUBTITLES = DATA / "subtitles"
 HISTORY = DATA / "history"
 YOUTUBE_PRIVACY = "private"
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 SCOPES = ["https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube.force-ssl"]
 
 def prepare():

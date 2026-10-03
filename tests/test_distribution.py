@@ -1,5 +1,6 @@
 import subprocess
 import json
+import plistlib
 import sys
 import zipfile
 from pathlib import Path
@@ -7,7 +8,7 @@ import pytest
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'scripts'))
 from safety import inspect,scan
-from package import package
+from package import package,VERSION
 
 @pytest.fixture
 def repo(tmp_path):
@@ -68,3 +69,24 @@ def test_command_executable_and_pages_static():
     assert '本工具在用户自己的 Mac 本地运行' in page
     assert '本项目的服务器' in page
     assert '<form' not in page
+
+def test_generated_app_not_allowed_in_git():
+    with pytest.raises(ValueError):inspect('课程视频备份.app/Contents/Info.plist',b'generated')
+
+def test_release_zip_includes_only_verified_app_files(repo,monkeypatch):
+    import package as module
+    (repo/'README.md').write_text('synthetic');subprocess.run(['git','add','.'],cwd=repo,check=True)
+    contents=repo/'课程视频备份.app/Contents';(contents/'MacOS').mkdir(parents=True)
+    (contents/'Info.plist').write_bytes(plistlib.dumps({'CFBundleShortVersionString':VERSION}))
+    (contents/'MacOS/CourseBackup').write_bytes(b'synthetic executable')
+    original_run=subprocess.run
+    def run(args,**kwargs):
+        if args[0]=='codesign':return subprocess.CompletedProcess(args,0)
+        return original_run(args,**kwargs)
+    monkeypatch.setattr(module.subprocess,'run',run)
+    archive=package(repo,repo/'release.zip')
+    with zipfile.ZipFile(archive) as z:
+        name='course-youtube-backup/课程视频备份.app/Contents/MacOS/CourseBackup'
+        assert z.read(name)==b'synthetic executable' and z.getinfo(name).external_attr>>16 & 0o111
+    (contents/'unexpected.json').write_text('{}')
+    with pytest.raises(ValueError,match='非构建文件'):package(repo,repo/'release.zip')

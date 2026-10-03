@@ -187,10 +187,12 @@ def launch(id):
 
 @app.get("/api/status")
 def status():
+    with lock_guard:
+        operations_busy = any(lock.locked() for lock in caption_locks.values())
     return {"version":config.VERSION, "token":csrf, "dependencies":dependencies(),
         "credential_present":(config.CONFIG / "client_secret.json").exists(),
         "connected":(config.CONFIG / "token.json").exists(), "auth":auth_snapshot(),
-        "database_error":db.error, "busy":work_lock.locked()}
+        "database_error":db.error, "busy":work_lock.locked(), "operations_busy":operations_busy}
 
 @app.get("/api/jobs")
 def jobs():

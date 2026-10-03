@@ -13,6 +13,7 @@ def run(*args,capture=False,check=True):
 def main():
     run("gh","auth","status")
     run(sys.executable,"-m","pytest","-q")
+    run(sys.executable,"scripts/build_macos_app.py")
     login = run("gh","api","user","--jq",".login",capture=True).stdout.strip()
     owner_id = run("gh","api","user","--jq",".id",capture=True).stdout.strip()
     full = login+"/course-youtube-backup"

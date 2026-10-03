@@ -10,18 +10,18 @@
 >
 > YouTube 不保证生成自动字幕。`captions.list` / `captions.download` 也可能受权限限制；没有凭据时只能验证 mock 行为，不能保证你的频道能通过 API 取得 ASR。工具会显示未就绪或真实 API 错误，并提供 YouTube Studio 字幕入口，不会伪造“字幕完成”。
 
-## 稳定版 v1.1.0
+## macOS App 版 v1.2.0
 
-本版本已完成代码清理、完整回归测试及发布安全检查；功能和界面保持现状。
+本版在已验证的 v1.1.0 业务功能上增加原生 macOS 启动器，网页 UI 和业务流程保持现状。日常使用双击项目文件夹中的 **课程视频备份.app**，无需 Terminal。
 
 - **OAuth 与发布包**：`data/`、凭据、token、上传会话、课程视频、字幕和数据库均不进入 Git / Release。发布检查覆盖暂存区、Git 追踪的工作文件和全部 Git 历史，并拒绝改名的凭据 JSON；示例 OAuth JSON 仅允许固定占位值。
 - **真实可见性**：Public / Private 显示来自 YouTube API 的实际返回状态及核对时间；修改失败会重新读取，无法核对时显示待确认。恢复失败时保留公开警示，不假定已经 Private。没有自动公开或定时隐私修改。
 - **临时文件**：只有确认上传完成后才清理该任务目录，拒绝符号链接和其他任务的文件路径。上传失败保留下载文件及上传会话，供手动恢复。
 - **异常保留**：token 写入采用原子替换，写入/同步/替换失败保留原文件；中断任务和损坏数据库保留原数据。远端删除未确认成功时不清理本地数据；本地清理失败保留记录并提示重试。
 
-稳定版验证：**121 项自动测试通过**；真实 Chrome 的 OAuth、Gemini/删除、基础页面及手机布局回归通过。YouTube 写操作使用模拟数据，测试不公开或删除真实课程。依赖一致性检查通过；Git 历史、暂存区、Git 追踪的工作文件及 ZIP 安全扫描通过。
+本版验证：**139 项自动测试通过**；真实 Chrome 的 OAuth、Gemini/删除、基础页面及手机布局回归通过。YouTube 写操作使用模拟数据，测试不公开或删除真实课程。原生 App 的 Finder 冷启动/重复双击、安全退出、授权和历史保留已实测；临时 LaunchAgent 两次载入/停止通过，模拟重新登录与旧 PID，未实际重启 Mac。依赖一致性检查通过；Git 历史、暂存区、Git 追踪的工作文件及 ZIP 安全扫描通过。
 
-更新已有安装时，请先等待当前任务结束并退出应用，备份 `data/` 到自己的本地安全位置，再替换程序文件。保留原 `data/`，不要把凭据或整个数据目录上传到 GitHub；`start.command` 会使用现有授权和历史。Public 视频在关闭应用后仍为公开，使用结束请手动恢复并核对。
+更新已有安装时，请先等待当前任务结束并退出应用，备份 `data/` 到自己的本地安全位置，再替换程序文件。保留原 `data/`，不要把凭据或整个数据目录上传到 GitHub；App 和备用入口会使用现有授权和历史。Public 视频在关闭应用后仍为公开，使用结束请手动恢复并核对。
 
 ## 功能
 
@@ -41,7 +41,7 @@
 
 ## macOS 环境与首次安装
 
-需要 macOS、Python **3.10+**、ffmpeg / ffprobe、Deno（推荐）或 Node。需要网络连接、可用 YouTube 频道，以及足够容纳一个课程视频的磁盘空间。长于 15 分钟的上传可能需要先在 YouTube 完成频道验证。
+原生 App 需要 macOS **13+**（Apple Silicon / Intel universal）；旧 `start.command` 入口保留。后端需要 Python **3.10+**、ffmpeg / ffprobe、Deno（推荐）或 Node。需要网络连接、可用 YouTube 频道，以及足够容纳一个课程视频的磁盘空间。长于 15 分钟的上传可能需要先在 YouTube 完成频道验证。
 
 1. 如果没有 Homebrew，从 [brew.sh](https://brew.sh/) 按官方步骤安装。
 2. 在 Terminal 执行：
@@ -52,14 +52,11 @@
 
    新版 yt-dlp 的完整 YouTube 支持需要外部 JavaScript 运行时；Python 安装已包含 `yt-dlp-ejs`，不需要 npm 项目。
 3. 下载本项目 Release ZIP 并解压，或 clone GitHub 仓库。
-4. 进入解压后的文件夹，运行：
+4. 进入解压后的项目文件夹，双击 **课程视频备份.app**。首次启动自动创建 `.venv` 并安装 Python 依赖；完成后自动打开默认浏览器到 `http://localhost:8000`。不会出现长期驻留的 Terminal 窗口。
 
-   ```sh
-   chmod +x start.command
-   ./start.command
-   ```
+App 包随 Release ZIP 提供，Git 源码只包含构建源码。clone 后可在 Mac 开发环境执行 `.venv/bin/python scripts/build_macos_app.py` 构建（需要 Apple Command Line Tools）。App 采用本地 ad-hoc 签名，未做 Apple 公证；从 GitHub 下载后若 macOS 阻止打开，请在系统设置的「隐私与安全性」中确认打开这个你下载的 App。
 
-首次启动自动创建 `.venv` 并安装 Python 依赖；以后双击 `start.command` 即可。启动器仅监听 `127.0.0.1:8000`，自动打开默认浏览器。保持 Terminal 打开；停止时按 **Control+C**。若 Finder 未允许执行脚本，可在 Terminal 运行上述命令。
+`start.command` 继续作为备用入口；旧入口运行时需要保持 Terminal 打开，并用 Control+C 停止。
 
 也可手动安装：
 
@@ -99,7 +96,7 @@ python3 -m venv .venv
 
 ## 日常使用
 
-1. 双击 `start.command`，自动打开 `http://localhost:8000`。
+1. 双击 **课程视频备份.app**，自动打开 `http://localhost:8000`。
 2. 粘贴老师提供且允许备份的单个课程链接。
 3. **手动**填写标题，例如 `M1`。不会自动填入原视频标题。
 4. 点击 **开始备份**。同一时间只处理一个任务，防止大文件并发占用资源。
@@ -114,6 +111,25 @@ python3 -m venv .venv
 字幕检查不是无限等待任务：API 返回空数组时明确显示「API 尚未同步」，不会据此断言 Studio 的字幕尚未生成；已经返回 ASR 但轨道不可获取时显示实际状态。几小时后仍没有时，请进入 YouTube Studio 检查视频语言、处理状态和自动字幕。清晰音频和正确语言有助于 YouTube 生成；生成由 YouTube 决定，本工具不能强制。
 
 官方 API 返回 403 时，不会改用爬虫绕过私密字幕权限。点击 **YouTube Studio**，在该视频字幕页面确认自动字幕是否存在，并使用 Studio 可用的下载操作。官方 [`captions.download`](https://developers.google.com/youtube/v3/docs/captions/download) 要求编辑视频权限；自动轨道可见不代表一定能成功下载。
+
+## 日常双击启动与安全停止
+
+- 将 **课程视频备份.app** 保留在现有项目文件夹中，可以拖到 Dock 或为它建立 Finder 替身。不要只复制 App 而丢弃项目文件。若 App 被单独移动，它会让你选择原项目目录，不创建新的数据目录。
+- 服务未运行时，App 在后台启动现有 FastAPI，等实际健康检查通过才打开浏览器；服务已经运行时只打开页面。文件锁和进程身份核对避免重复实例。
+- 浏览器窗口关闭不等于停止 App。控制窗口中的 **停止服务** 会停止后台服务，App 本身可保留；关闭 App 控制窗口或按 Command+Q 会先安全停止服务再退出。
+- 备份、OAuth 或字幕/隐私/删除操作进行中时，停止/退出会被拒绝，等待完成后再操作。不会使用 `killall`、`pkill` 或强制杀死其他 Python 进程。强制退出或崩溃后如果服务仍在，可再次打开 App 使用「停止服务」；不会重复启动第二个服务器。
+- OAuth、数据库、字幕、历史、上传会话仍使用选择的原项目 `data/`。App 不迁移、重置或打包你的数据；日志在 `data/history/service.log`，不记录凭据。端口被其他项目/程序占用时显示错误，不停止它。
+- 双击后无需重新授权；只有原 Google token 过期/撤销或权限不足时才需重新连接。冷启动会像原入口一样核对历史和实际可见性。
+
+## 可选：登录 Mac 后启动后台服务（默认关闭）
+
+在 App 控制窗口勾选 **登录 Mac 后自动启动后台服务（可选）**，阅读确认窗口后点击「开启」。这才会创建当前用户的 LaunchAgent，不需要管理员权限。下次登录只启动后台服务，不打开浏览器、不触发备份或隐私修改；可收藏 `http://localhost:8000`。
+
+关闭方式：在同一 App 取消勾选并确认「关闭」。由 LaunchAgent 启动的服务会安全停止，配置会移除，日后仍可双击 App。任务进行中会拒绝关闭，完成后重试。App 的停止/退出也能停止登录启动的服务；它不会立即被自动拉起，下次登录才再次启动。
+
+配置位于 `~/Library/LaunchAgents/dev.course-youtube-backup.<项目路径哈希>.plist`，设置 `RunAtLoad=true`、`KeepAlive=false`。不使用定时器或永久保活；进程停止后不会出现无限重启。开启期间请保持项目目录不变；移动前先关闭登录启动，移动后在原生 App 重新选择目录并开启。
+
+如需 CLI 管理（备用）：`/bin/zsh scripts/app-control.sh start|stop|status|login-enable|login-disable`，每次只传其中一个动作。查看生成的 plist：`.venv/bin/python scripts/macos_service.py agent-plist`。设计参考 [Apple 的 LaunchAgent 文档](https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingLaunchdJobs.html)。
 
 ## Gemini 使用与可见性
 
@@ -140,7 +156,9 @@ API 核对发现视频不存在或远端上传失败时统一标为孤立记录�
 ```text
 app/                         Python 后端 + 原生 HTML/CSS/JS
 app/static/                  中文本地应用
-start.command                macOS 双击入口
+课程视频备份.app             Release 内的原生 Mac App（不进入 Git）
+macos/App.swift              原生启动器源码
+start.command                备用 Terminal 入口
 requirements.txt             主程序依赖
 requirements-lock.txt        开发时实际验证的依赖快照
 client_secret.example.json   假占位配置，不能用于登录
@@ -158,7 +176,7 @@ scripts/                     安全扫描、ZIP 打包和发布工具
 
 上传失败保留完整视频和上传会话；**重试备份 / 上传** 会尽量直接继续上传。下载失败时也保留 `.part` 以便 yt-dlp 恢复。上传会话过期时必须先确认频道没有重复视频，再点击重新上传（从头开始）。重启中断的任务会显示失败，供手动恢复。正常上传后清理失败则显示 **清理临时文件**。
 
-不要在备份进行中移走视频文件。关闭 Terminal 会中断任务；下次启动可手动重试。token、数据库和上传会话是敏感信息，不要分享整个 `data/`。
+不要在备份进行中移走视频文件。使用备用入口时，关闭 Terminal 会中断任务；下次启动可手动重试。token、数据库和上传会话是敏感信息，不要分享整个 `data/`。
 
 ## 常见错误
 
@@ -217,7 +235,7 @@ UI 验证：`.venv/bin/python scripts/verify_ui.py`（需要安装 Chrome 或 `p
 <!-- PUBLIC_LINKS_START -->
 - [GitHub Repository](https://github.com/mahirun019-dev/course-youtube-backup)
 - [GitHub Pages 介绍网站](https://mahirun019-dev.github.io/course-youtube-backup/)
-- [v1.1.0 Release](https://github.com/mahirun019-dev/course-youtube-backup/releases/tag/v1.1.0)
+- [v1.2.0 Release](https://github.com/mahirun019-dev/course-youtube-backup/releases/tag/v1.2.0)
 <!-- PUBLIC_LINKS_END -->
 
 介绍页面源码在 `docs/`，可直接用 GitHub Pages 的 **Deploy from a branch → main → /docs**。无需 GitHub Actions 或公网后端。
@@ -238,7 +256,7 @@ gh auth login -h github.com
 .venv/bin/python scripts/package.py
 ```
 
-Release ZIP 位于项目父目录，只包含 Git 跟踪的运行源码、文档和测试。`start.command` 在 ZIP 内带可执行权限；解压工具若未保留权限，请运行 `chmod +x start.command`。
+Release ZIP 位于项目父目录，包含 Git 跟踪的运行源码、文档、测试，以及经过签名验证的原生 App；不包含任何个人数据。`start.command` 在 ZIP 内带可执行权限；解压工具若未保留权限，请运行 `chmod +x start.command`。
 
 ## 参考与许可证
 
