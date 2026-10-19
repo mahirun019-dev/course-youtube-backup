@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 from unittest.mock import Mock
 import sqlite3
+import json
 import pytest
 from fastapi.testclient import TestClient
 from app import main,config
@@ -12,10 +13,16 @@ VIDEO='abcdefghijk'
 def remote(privacy='private'):
     return {'id':VIDEO,'etag':'synthetic-etag','status':{'privacyStatus':privacy,'uploadStatus':'processed','license':'youtube','embeddable':True,'publicStatsViewable':False,'selfDeclaredMadeForKids':False,'containsSyntheticMedia':False}}
 
-@pytest.fixture
-def setup(tmp_path,monkeypatch):
+@pytest.fixture(params=["single","merge"])
+def setup(tmp_path,monkeypatch,request):
     db=Database(tmp_path/'history.sqlite3');yt=Mock()
     monkeypatch.setattr(main,'db',db);monkeypatch.setattr(main,'youtube',yt)
+    if request.param=='merge':
+        create=db.create
+        def merged_create(id,title,url):
+            create(id,title,url)
+            db.update(id,sources_json=json.dumps([{'url':'https://youtu.be/'+letter*11,'title':'Part '+letter} for letter in 'AB']))
+        monkeypatch.setattr(db,'create',merged_create)
     for name in ('TEMP','SUBTITLES'):
         p=tmp_path/name.lower();p.mkdir();monkeypatch.setattr(config,name,p)
     with TestClient(main.app,base_url='http://localhost') as client:

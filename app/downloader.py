@@ -46,8 +46,8 @@ def download(url, folder, progress, metadata):
     folder.mkdir(parents=True, exist_ok=True, mode=0o700)
     def hook(d):
         if d.get("status") == "downloading":
-            total = d.get("total_bytes") or d.get("total_bytes_estimate")
-            progress(min(99, d.get("downloaded_bytes",0) / total * 100) if total else 0)
+            total = d.get("total_bytes")
+            progress(min(99, d.get("downloaded_bytes",0) / total * 100) if total else None)
     opts = {"format": FORMAT, "outtmpl": str(folder / "video.%(ext)s"), "merge_output_format":"mp4",
             "noplaylist":True, "logger":QuietLogger(), "progress_hooks":[hook], "retries":3,
             "fragment_retries":3, "socket_timeout":30, "cachedir":False,
@@ -70,3 +70,26 @@ def download(url, folder, progress, metadata):
             raise AppError("下载未产生完整视频文件，请重试。")
     except yt_dlp.utils.DownloadError:
         raise AppError("无法访问这个视频或下载失败。请确认 URL、观看权限和网络；需要登录、Private、DRM 或付费的视频不支持。可更新 yt-dlp 后重试。")
+
+
+def inspect_video(url):
+    """Preflight metadata/size estimate only; no video bytes downloaded."""
+    deps = dependencies()
+    opts = {"format":FORMAT, "noplaylist":True, "logger":QuietLogger(), "cachedir":False,
+            "socket_timeout":30, "retries":2,
+            "js_runtimes":{"deno":{}} if deps["deno"] else {"node":{}}}
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+        if info.get("is_live"):
+            raise AppError("请等待直播结束后再备份，避免无限下载。")
+        from .media import number, GIB
+        duration = number(info.get("duration"))
+        selected = info.get("requested_formats") or [info]
+        estimate = sum(number(f.get("filesize") or f.get("filesize_approx")) or
+                       number(f.get("tbr")) * duration * 1000 / 8 for f in selected)
+        if not estimate:
+            estimate = duration * 8_000_000 / 8 if duration else 2 * GIB
+        return {"title":info.get("title", ""), "duration":duration, "estimated_bytes":int(estimate)}
+    except yt_dlp.utils.DownloadError:
+        raise AppError("无法获取原视频信息，请确认 URL、观看权限和网络后重试。") from None

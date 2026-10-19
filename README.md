@@ -10,23 +10,23 @@
 >
 > YouTube 不保证生成自动字幕。`captions.list` / `captions.download` 也可能受权限限制；没有凭据时只能验证 mock 行为，不能保证你的频道能通过 API 取得 ASR。工具会显示未就绪或真实 API 错误，并提供 YouTube Studio 字幕入口，不会伪造“字幕完成”。
 
-## macOS App 版 v1.2.0
+## v1.3.0 · 多视频合并
 
-本版在已验证的 v1.1.0 业务功能上增加原生 macOS 启动器，网页 UI 和业务流程保持现状。日常使用双击项目文件夹中的 **课程视频备份.app**，无需 Terminal。
+本版在 v1.2.0 上增加可选的 **2–8 个视频合并**：按指定顺序逐个下载，合并成一个视频，只上传一次，固定为 Private。默认单视频流程、OAuth、历史、字幕、Gemini、删除和原生启动器继续保留。日常使用双击项目文件夹中的 **课程视频备份.app**，无需 Terminal。
 
 - **OAuth 与发布包**：`data/`、凭据、token、上传会话、课程视频、字幕和数据库均不进入 Git / Release。发布检查覆盖暂存区、Git 追踪的工作文件和全部 Git 历史，并拒绝改名的凭据 JSON；示例 OAuth JSON 仅允许固定占位值。
 - **真实可见性**：Public / Private 显示来自 YouTube API 的实际返回状态及核对时间；修改失败会重新读取，无法核对时显示待确认。恢复失败时保留公开警示，不假定已经 Private。没有自动公开或定时隐私修改。
 - **临时文件**：只有确认上传完成后才清理该任务目录，拒绝符号链接和其他任务的文件路径。上传失败保留下载文件及上传会话，供手动恢复。
 - **异常保留**：token 写入采用原子替换，写入/同步/替换失败保留原文件；中断任务和损坏数据库保留原数据。远端删除未确认成功时不清理本地数据；本地清理失败保留记录并提示重试。
 
-本版验证：**139 项自动测试通过**；真实 Chrome 的 OAuth、Gemini/删除、基础页面及手机布局回归通过。YouTube 写操作使用模拟数据，测试不公开或删除真实课程。原生 App 的 Finder 冷启动/重复双击、安全退出、授权和历史保留已实测；临时 LaunchAgent 两次载入/停止通过，模拟重新登录与旧 PID，未实际重启 Mac。依赖一致性检查通过；Git 历史、暂存区、Git 追踪的工作文件及 ZIP 安全扫描通过。
+本版验证：**192 项自动测试通过**；包含本地 ffmpeg 的 2/4 段及重排、不同分辨率/帧率/视频编码/音频格式/采样率/声道、缺失音轨、声音与画面顺序、下载/合并/上传失败与恢复、旧数据库迁移，以及单视频/合并记录的隐私和删除回归。真实 Chrome 在隔离数据下验证多视频与单视频完整流程；所有 Google 写操作均为 mock，不下载或上传真实课程。发布前检查原生 App 启动、现有数据保留、依赖一致性、Git 历史/暂存区及 ZIP 安全。
 
 更新已有安装时，请先等待当前任务结束并退出应用，备份 `data/` 到自己的本地安全位置，再替换程序文件。保留原 `data/`，不要把凭据或整个数据目录上传到 GitHub；App 和备用入口会使用现有授权和历史。Public 视频在关闭应用后仍为公开，使用结束请手动恢复并核对。
 
 ## 功能
 
 - yt-dlp 当前稳定版 + ffmpeg 合并音视频，最高 1080p，无 4K / 8K。
-- 只接受单个 YouTube 视频 URL；播放列表参数被去掉，直播需结束后再备份。
+- 默认单视频；可选 2–8 个单视频 URL 合并，每个任务只上传一个视频。播放列表参数被去掉，直播需结束后再备份。
 - 上传标题必须手动输入，原视频标题仅作为确认信息。
 - 上传始终使用后端常量 `YOUTUBE_PRIVACY = "private"`；上传接口拒绝额外权限参数。自动字幕就绪后可在独立区域明确确认临时公开，使用完手动恢复。
 - Google Desktop OAuth，token 和 client secret 仅在本机保存，目录 0700 / token 0600。
@@ -41,7 +41,7 @@
 
 ## macOS 环境与首次安装
 
-原生 App 需要 macOS **13+**（Apple Silicon / Intel universal）；旧 `start.command` 入口保留。后端需要 Python **3.10+**、ffmpeg / ffprobe、Deno（推荐）或 Node。需要网络连接、可用 YouTube 频道，以及足够容纳一个课程视频的磁盘空间。长于 15 分钟的上传可能需要先在 YouTube 完成频道验证。
+原生 App 需要 macOS **13+**（Apple Silicon / Intel universal）；旧 `start.command` 入口保留。后端需要 Python **3.10+**、ffmpeg / ffprobe、Deno（推荐）或 Node。需要网络连接、可用 YouTube 频道，以及足够容纳所有分段和合并输出的磁盘空间。长于 15 分钟的上传可能需要先在 YouTube 完成频道验证。
 
 1. 如果没有 Homebrew，从 [brew.sh](https://brew.sh/) 按官方步骤安装。
 2. 在 Terminal 执行：
@@ -54,7 +54,7 @@
 3. 下载本项目 Release ZIP 并解压，或 clone GitHub 仓库。
 4. 进入解压后的项目文件夹，双击 **课程视频备份.app**。首次启动自动创建 `.venv` 并安装 Python 依赖；完成后自动打开默认浏览器到 `http://localhost:8000`。不会出现长期驻留的 Terminal 窗口。
 
-App 包随 Release ZIP 提供，Git 源码只包含构建源码。clone 后可在 Mac 开发环境执行 `.venv/bin/python scripts/build_macos_app.py` 构建（需要 Apple Command Line Tools）。App 采用本地 ad-hoc 签名，未做 Apple 公证；从 GitHub 下载后若 macOS 阻止打开，请在系统设置的「隐私与安全性」中确认打开这个你下载的 App。
+App 包随 Release ZIP 提供，Git 源码只包含构建源码和多尺寸图标资源。clone 后可在 Mac 开发环境执行 `.venv/bin/python scripts/build_macos_app.py` 构建（需要 Apple Command Line Tools；编译缓存使用临时目录并在构建后清理，不重新生成项目 work/）。App 采用本地 ad-hoc 签名，未做 Apple 公证；从 GitHub 下载后若 macOS 阻止打开，请在系统设置的「隐私与安全性」中确认打开这个你下载的 App。
 
 `start.command` 继续作为备用入口；旧入口运行时需要保持 Terminal 打开，并用 Control+C 停止。
 
@@ -97,10 +97,10 @@ python3 -m venv .venv
 ## 日常使用
 
 1. 双击 **课程视频备份.app**，自动打开 `http://localhost:8000`。
-2. 粘贴老师提供且允许备份的单个课程链接。
+2. 默认 **单视频**，粘贴一个获准备份的课程链接；多段课程则切换 **多视频合并**，添加 2–8 个链接，用上移/下移按钮排序。
 3. **手动**填写标题，例如 `M1`。不会自动填入原视频标题。
 4. 点击 **开始备份**。同一时间只处理一个任务，防止大文件并发占用资源。
-5. 下载完成后自动上传。显示的上传百分比来源于 YouTube 已确认接收的字节；最后确认成功才达到 100%。
+5. 多视频模式先检查磁盘空间，再逐个下载并合并，最终只上传一个视频。单视频下载完成后直接上传。显示的上传百分比来源于 YouTube 已确认接收的字节；最后确认成功才达到 100%。
 6. 成功后显示 YouTube 链接、非公開状态，并删除临时视频；字幕不会立即完成。
 7. 等待后点击 **检查字幕**。不会自动调用字幕 API，重复手动检查至少间隔 60 秒。
 8. 找到日语 ASR 时显示日本語；没有日语但有其他可用 ASR 时显示实际语言。
@@ -111,6 +111,30 @@ python3 -m venv .venv
 字幕检查不是无限等待任务：API 返回空数组时明确显示「API 尚未同步」，不会据此断言 Studio 的字幕尚未生成；已经返回 ASR 但轨道不可获取时显示实际状态。几小时后仍没有时，请进入 YouTube Studio 检查视频语言、处理状态和自动字幕。清晰音频和正确语言有助于 YouTube 生成；生成由 YouTube 决定，本工具不能强制。
 
 官方 API 返回 403 时，不会改用爬虫绕过私密字幕权限。点击 **YouTube Studio**，在该视频字幕页面确认自动字幕是否存在，并使用 Studio 可用的下载操作。官方 [`captions.download`](https://developers.google.com/youtube/v3/docs/captions/download) 要求编辑视频权限；自动轨道可见不代表一定能成功下载。
+
+## 多视频合并
+
+1. 选择 **多视频合并**，默认两个输入框；用 **＋ 添加视频** 加到最多八个。每行可删除，删除至两个时保留空输入框，需补齐链接。
+2. 用 **上移 / 下移** 指定顺序；页面显示「将按当前顺序合并」。上传标题始终手动填写，例如 `M3`，原始标题仅用于核对。
+3. 开始后依次显示 **下载第 n/N 个 → 合并/校验 → 上传 YouTube**。下载只在取得实际字节总量时显示当前下载流百分比，合并/校验显示阶段，不伪造百分比；上传沿用 YouTube 确认的字节进度。
+4. 历史只产生一条 `M3`，标注「4 个视频合并」并保留原始 URL、标题和顺序。字幕、Gemini、Private/Public 和删除操作针对最终视频，行为与单视频相同。
+
+### 合并质量与资源
+
+- `ffprobe` 对比分辨率、帧率、时基、H.264/AAC 编码配置、音轨参数与时间偏移。完全兼容时优先 [concat demuxer + stream copy](https://ffmpeg.org/ffmpeg-formats.html#concat)，不重新编码。
+- 参数不同或直接拼接/校验失败时，单次 ffmpeg 处理为 H.264（CRF 20、veryfast）+ AAC 48kHz/stereo MP4；统一帧率（最高 60fps）与画布（最高 1920×1080），等比缩放并填充，不裁切 PPT。原片无音轨时补相应静音；音轨偏移进行对齐，尾部保留音频并按需延续末帧。
+- 转码只写最终输出，不保存中间转码副本；限制编码线程和 filter 线程以控制 CPU/内存。合并后检查音视频流、总时长、同步偏移，并解码到 null sink 验证可读性。长课程校验也需时间，不会把未校验文件标记为完成。
+- 下载前用元数据文件大小/码率/时长估算空间，并预留合并输出与至少 1 GiB 余量；无法取得大小/时长时按每段 2 GiB 保守估算。估算不是精确上限；下载前与合并前再次检查，空间不足或实际写入失败时保留已完成输入。
+- 临时文件在 `data/temp/<任务ID>/parts/01...08/` 和 `merged.mp4`，只在官方 API 确认成功返回 Video ID 与 Private 后清理整个任务目录。`merge.log` 位于该任务目录，记录 ffmpeg 的具体错误，不进入 Git/Release。
+
+### 失败后重试
+
+- 某段下载失败：已完成分段保留，重试跳过它们，继续失败及后续部分。未完成的 `.part` 继续由 yt-dlp 恢复。
+- 合并失败：保留全部分段；重试只重新合并，不重新下载。未提交的 `merged.partial.mp4` 可清除后重新生成；任务锁防止旧 ffmpeg 尚未结束时启动第二个合并。
+- 上传失败：保留合并文件和原 resumable 会话；重试先查询服务器，再传剩余字节，不重新下载/合并，也不静默创建第二个会话。会话过期仍需手动确认 Studio 没有重复视频。
+- 重启后中断任务标记失败，按同样入口恢复。版本升级只增加数据库列，既有记录按单视频处理，不迁移 OAuth 或数据目录。
+
+![多视频合并与原始顺序（本地合成测试，非真实课程）](docs/merge-screenshot.png)
 
 ## 日常双击启动与安全停止
 
@@ -222,7 +246,7 @@ scripts/                     安全扫描、ZIP 打包和发布工具
 .venv/bin/python -m pytest -q
 ```
 
-测试使用临时目录与合成数据，不下载真实课程、不调用 Google、不上传任何视频。OAuth 回归测试实际启动本地回调监听器；Google token 响应由测试模拟。覆盖 URL / 标题、固定 private、断点续传和网络异常、成功清理 / 失败保留、历史恢复 / 损坏、ASR 选择、字幕转换与导出、本地访问保护、隐私变更成功/拒绝/响应丢失、无 ID / 仅本地 / 远端删除成功与失败，以及 Git / ZIP 安全扫描。
+测试需要本机 ffmpeg/ffprobe，使用临时目录与合成数据，不下载真实课程、不调用 Google、不上传任何视频。OAuth 回归测试实际启动本地回调监听器；Google token 响应由测试模拟。覆盖 URL / 标题、固定 private、断点续传和网络异常、成功清理 / 失败保留、历史恢复 / 损坏、ASR 选择、字幕转换与导出、本地访问保护、隐私变更成功/拒绝/响应丢失、无 ID / 仅本地 / 远端删除成功与失败，以及 Git / ZIP 安全扫描。
 
 `.venv/bin/python scripts/verify_oauth_ui.py` 可用真实 Chrome 验证自动打开失败后的手动按钮、复制链接、真实本地回调，以及拒绝 / 超时清理；Google 页面和 token 响应均为合成数据。
 
@@ -230,12 +254,14 @@ UI 验证：`.venv/bin/python scripts/verify_ui.py`（需要安装 Chrome 或 `p
 
 `.venv/bin/python scripts/verify_gemini_ui.py` 使用真实 Chrome 和隔离数据库，验证公开确认、复制 Gemini 链接、恢复、两级删除确认及失败保留；所有 YouTube 状态与写操作使用合成数据。
 
+`.venv/bin/python scripts/verify_merge_ui.py` 使用本地合成视频、真实 ffmpeg 和隔离 Chrome，覆盖 2/4 段合并、增删排序、八段上限、手动标题、真实阶段进度、源清单、清理与单视频回归；上传接口全部 mock。
+
 ## GitHub / Pages / Release
 
 <!-- PUBLIC_LINKS_START -->
 - [GitHub Repository](https://github.com/mahirun019-dev/course-youtube-backup)
 - [GitHub Pages 介绍网站](https://mahirun019-dev.github.io/course-youtube-backup/)
-- [v1.2.0 Release](https://github.com/mahirun019-dev/course-youtube-backup/releases/tag/v1.2.0)
+- [v1.3.0 Release](https://github.com/mahirun019-dev/course-youtube-backup/releases/tag/v1.3.0)
 <!-- PUBLIC_LINKS_END -->
 
 介绍页面源码在 `docs/`，可直接用 GitHub Pages 的 **Deploy from a branch → main → /docs**。无需 GitHub Actions 或公网后端。

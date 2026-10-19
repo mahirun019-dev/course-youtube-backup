@@ -79,6 +79,7 @@ def test_release_zip_includes_only_verified_app_files(repo,monkeypatch):
     contents=repo/'课程视频备份.app/Contents';(contents/'MacOS').mkdir(parents=True)
     (contents/'Info.plist').write_bytes(plistlib.dumps({'CFBundleShortVersionString':VERSION}))
     (contents/'MacOS/CourseBackup').write_bytes(b'synthetic executable')
+    (contents/'Resources').mkdir();(contents/'Resources/CourseBackup.icns').write_bytes(b'synthetic icon')
     original_run=subprocess.run
     def run(args,**kwargs):
         if args[0]=='codesign':return subprocess.CompletedProcess(args,0)
@@ -88,5 +89,6 @@ def test_release_zip_includes_only_verified_app_files(repo,monkeypatch):
     with zipfile.ZipFile(archive) as z:
         name='course-youtube-backup/课程视频备份.app/Contents/MacOS/CourseBackup'
         assert z.read(name)==b'synthetic executable' and z.getinfo(name).external_attr>>16 & 0o111
+        assert z.read('course-youtube-backup/课程视频备份.app/Contents/Resources/CourseBackup.icns')==b'synthetic icon'
     (contents/'unexpected.json').write_text('{}')
     with pytest.raises(ValueError,match='非构建文件'):package(repo,repo/'release.zip')

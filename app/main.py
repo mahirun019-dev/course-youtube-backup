@@ -1,4 +1,5 @@
 import logging
+import json
 import re
 import secrets
 import shutil
@@ -11,13 +12,14 @@ from typing import Literal
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.concurrency import run_in_threadpool
 from . import config
-from .database import Database, public_job, now
+from .database import Database, public_job, now, sources_of
 from .downloader import validate_url, download, dependencies
 from .captions import choose_asr, asr_tracks, is_japanese, normalized, srt_to_txt, safe_name
+from .multivideo import prepare_merged
 from .youtube import YouTube
 from .errors import AppError, friendly
 
@@ -64,11 +66,26 @@ async def unexpected(request, exc):
 
 class BackupInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    url: str
+    url: str | None = None
+    urls: list[str] | None = None
     title: str
+    @model_validator(mode="after")
+    def source_selection(self):
+        if (self.url is None) == (self.urls is None):
+            raise ValueError("请提供单个 URL，或 2–8 个合并 URL，不能同时提供。")
+        if self.urls is not None:
+            if not 2 <= len(self.urls) <= 8:
+                raise ValueError("多视频合并需要 2–8 个 URL。")
+            try:
+                self.urls = [validate_url(u) for u in self.urls]
+            except AppError as exc:
+                raise ValueError(exc.message)
+        return self
     @field_validator("url")
     @classmethod
     def valid_url(cls, value):
+        if value is None:
+            return value
         try:
             validate_url(value)
             return value.strip()
@@ -139,7 +156,10 @@ def cleanup(id):
             raise AppError("临时文件不属于该任务目录，未清理其他记录。")
         if folder.exists():
             shutil.rmtree(owned_path(str(folder), config.TEMP))
-        db.update(id, temp_path="", session_uri="", message="上传完成。YouTube 正在生成自动字幕，请稍后手动检查。")
+        fields = {}
+        if job.get("sources_json"):
+            fields["sources_json"] = json.dumps([{k:v for k,v in source.items() if k != "path"} for source in sources_of(job)], ensure_ascii=False)
+        db.update(id, temp_path="", session_uri="", message="上传完成。YouTube 正在生成自动字幕，请稍后手动检查。", **fields)
     except OSError:
         db.update(id, message="上传已完成，但临时文件删除失败。请检查目录权限后点击清理临时文件。")
 
@@ -151,13 +171,16 @@ def worker(id):
         if not path or not path.is_file():
             if job["session_uri"]:
                 raise AppError("上传会话对应的视频文件缺失，不能安全恢复。请创建新备份。")
-            db.update(id, state="downloading", progress=0, message="正在下载视频（最高 1080p）……")
-            last = [0.0]
-            def progress(p):
-                if time.monotonic() - last[0] >= 0.5:
-                    db.update(id, progress=p)
-                    last[0] = time.monotonic()
-            path = download(validate_url(job["url"]),config.TEMP / id,progress,lambda title: db.update(id,source_title=title))
+            if job.get("sources_json"):
+                path = prepare_merged(job, db)
+            else:
+                db.update(id, state="downloading", progress=0, message="正在下载视频（最高 1080p）……")
+                last = [0.0]
+                def progress(p):
+                    if time.monotonic() - last[0] >= 0.5:
+                        db.update(id, progress=p)
+                        last[0] = time.monotonic()
+                path = download(validate_url(job["url"]),config.TEMP / id,progress,lambda title: db.update(id,source_title=title))
             db.update(id,temp_path=str(path))
         db.update(id,state="uploading",progress=0,message="正在上传至 YouTube · 非公開（固定）……")
         job = db.get(id)
@@ -254,7 +277,10 @@ def create(body:BackupInput):
         raise AppError("已有备份任务进行中，请等待完成。",409)
     id = uuid.uuid4().hex
     try:
-        db.create(id,body.title,body.url)
+        if body.urls is not None:
+            db.create(id,body.title,body.urls[0], urls=body.urls)
+        else:
+            db.create(id,body.title,body.url)
     except Exception:
         work_lock.release()
         raise
@@ -383,7 +409,7 @@ def record_visibility(id, video):
 
 @app.post("/api/visibility/sync")
 def sync_visibility():
-    jobs = [j for j in db.list() if re.fullmatch(r"[A-Za-z0-9_-]{11}", j["video_id"] or "") and j["state"] not in ("queued","downloading","uploading") and not j["remote_deleted"]]
+    jobs = [j for j in db.list() if re.fullmatch(r"[A-Za-z0-9_-]{11}", j["video_id"] or "") and j["state"] not in ("queued","downloading","merging","uploading") and not j["remote_deleted"]]
     count = 0
     for start in range(0,len(jobs),50):
         locked = []
@@ -471,7 +497,7 @@ def delete_record(id:str, body:DeleteInput):
         raise AppError("请先确认删除记录。",400)
     with operation(id):
         job = db.get(id)
-        if job["state"] in ("queued","downloading","uploading"):
+        if job["state"] in ("queued","downloading","merging","uploading"):
             raise AppError("任务仍在进行中，不能删除。请等待任务结束。",409)
         if body.mode == "remote":
             if body.confirmation_title != job["title"]:

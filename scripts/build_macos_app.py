@@ -32,7 +32,8 @@ def build_bundle(root,bundle,version):
     contents = bundle/"Contents";binary = contents/"MacOS/CourseBackup"
     binary.parent.mkdir(parents=True,exist_ok=True)
     resources = contents/"Resources";resources.mkdir(exist_ok=True)
-    work = root/"work/macos-build";work.mkdir(parents=True,exist_ok=True)
+    shutil.copyfile(root/"macos/icon/CourseBackup.icns",resources/"CourseBackup.icns")
+    work = bundle.parent/"compiler";work.mkdir(parents=True,exist_ok=True)
     sdk = subprocess.check_output(["xcrun","--show-sdk-path"],text=True).strip()
     parts = []
     for arch in ("arm64","x86_64"):
@@ -41,7 +42,7 @@ def build_bundle(root,bundle,version):
             "-module-cache-path",str(work/"modules"),str(root/"macos/App.swift"),"-o",str(target)],check=True)
     subprocess.run(["lipo","-create",*[str(x) for x in parts],"-output",str(binary)],check=True)
     info = {"CFBundleName":"课程视频备份","CFBundleDisplayName":"课程视频备份","CFBundleIdentifier":"dev.course-youtube-backup.app",
-        "CFBundleExecutable":"CourseBackup","CFBundlePackageType":"APPL","CFBundleShortVersionString":version,
+        "CFBundleExecutable":"CourseBackup","CFBundleIconFile":"CourseBackup.icns","CFBundleIconName":"CourseBackup","CFBundlePackageType":"APPL","CFBundleShortVersionString":version,
         "CFBundleVersion":version,"LSMinimumSystemVersion":"13.0","NSHighResolutionCapable":True,
         "NSHumanReadableCopyright":"Course YouTube Backup · MIT License"}
     (contents/"Info.plist").write_bytes(plistlib.dumps(info))

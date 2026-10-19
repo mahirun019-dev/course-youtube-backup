@@ -91,14 +91,31 @@ function render(jobs){
   const fragment=document.createDocumentFragment();
   for(const j of jobs){
     const box=el('article',undefined,'job '+j.state);box.dataset.jobId=j.id;
-    const active=['queued','downloading','uploading'].includes(j.state);
+    const active=['queued','downloading','merging','uploading'].includes(j.state);
     const head=el('div',undefined,'job-head');
     head.append(el('h3',j.title),el('span',visibilityText(j),'badge '+(j.visibility==='public'?'public-badge':'')),el('span',new Date(j.created_at).toLocaleString('zh-CN'),'date'));
     const del=action(head,'删除',()=>deleteJob(j),'text-button delete-button');del.disabled=active;
     box.append(head);
+    if(j.mode==='merge'&&j.sources?.length){
+      box.append(el('p',j.sources.length+' 个视频合并','source'));
+      const details=el('details',undefined,'source-list');details.append(el('summary','原始视频（按合并顺序）'));
+      const list=el('ol');
+      for(const [index,source] of j.sources.entries()){
+        const item=el('li'),a=el('a',(index+1)+'. '+(source.title||'第 '+(index+1)+' 部分'));
+        try{const url=new URL(source.url);if(['https:','http:'].includes(url.protocol)&&['www.youtube.com','youtube.com','m.youtube.com','youtu.be'].includes(url.hostname)){a.href=url.href;a.target='_blank';a.rel='noopener noreferrer'}}catch(e){}
+        item.append(a);list.append(item);
+      }
+      details.append(list);box.append(details);
+    }
     if(j.source_title)box.append(el('p','原视频标题：'+j.source_title,'source'));
     box.append(el('p',j.message||'等待处理……','message'));
-    if(active){const row=el('div',undefined,'progress-row'),p=el('progress');p.max=100;p.value=j.progress;row.append(p,el('span',Math.floor(j.progress)+'%'));box.append(row)}
+    if(active){
+      const row=el('div',undefined,'progress-row'),p=el('progress');p.max=100;
+      const known=typeof j.progress==='number'&&Number.isFinite(j.progress)&&['downloading','uploading'].includes(j.state);
+      if(known)p.value=j.progress;
+      const stage={queued:'准备中',downloading:'当前下载流',merging:'合并 / 校验',uploading:'上传 YouTube'}[j.state];
+      row.append(p,el('span',stage+(known?'：'+Math.floor(j.progress)+'%':'进行中')));box.append(row);
+    }
     const row=el('div',undefined,'actions');
     if(j.video_id&&j.state==='uploaded'&&!j.remote_deleted){
       box.append(el('p','✓ YouTube 上传完成','caption'));
@@ -170,5 +187,34 @@ async function refresh(){
 }
 $('sync-visibility').onclick=async()=>{const b=$('sync-visibility');b.disabled=true;try{notice((await api('/api/visibility/sync',{})).message)}catch(e){notice(e.message)}finally{await refresh();b.disabled=false}};
 $('connect').onclick=async()=>{try{notice((await api('/api/auth',{})).message);await refresh()}catch(e){notice(e.message)}};
-$('backup-form').onsubmit=async e=>{e.preventDefault();$('start').disabled=true;try{await api('/api/jobs',{url:$('url').value,title:$('title').value});notice('任务已开始');await refresh()}catch(e){notice(e.message);$('start').disabled=false}};
+let backupMode='single',sourceValues=['',''];
+function drawSources(){
+  const fragment=document.createDocumentFragment();
+  for(const [index,value] of sourceValues.entries()){
+    const row=el('div',undefined,'source-input-row'),label=el('label','第 '+(index+1)+' 部分');
+    const input=el('input');input.type='url';input.value=value;input.required=backupMode==='merge';input.disabled=backupMode!=='merge';
+    input.id='source-'+index;label.htmlFor=input.id;input.placeholder='https://youtu.be/xxxxxxxxxxx';input.autocomplete='off';
+    input.oninput=()=>{sourceValues[index]=input.value};
+    const controls=el('div',undefined,'source-order');
+    for(const [text,delta] of [['上移',-1],['下移',1]]){
+      const button=el('button',text,'text-button');button.type='button';button.setAttribute('aria-label','第 '+(index+1)+' 部分'+text);
+      button.disabled=index+delta<0||index+delta>=sourceValues.length;
+      button.onclick=()=>{[sourceValues[index],sourceValues[index+delta]]=[sourceValues[index+delta],sourceValues[index]];drawSources();$('source-'+(index+delta)).focus()};controls.append(button);
+    }
+    const remove=el('button','删除','text-button');remove.type='button';remove.setAttribute('aria-label','删除第 '+(index+1)+' 部分');
+    remove.onclick=()=>{sourceValues.splice(index,1);while(sourceValues.length<2)sourceValues.push('');drawSources()};controls.append(remove);
+    row.append(label,input,controls);fragment.append(row);
+  }
+  $('source-inputs').replaceChildren(fragment);$('add-source').disabled=sourceValues.length>=8;
+}
+function setMode(mode){
+  backupMode=mode;const merge=mode==='merge';$('single-video').hidden=merge;$('multi-video').hidden=!merge;
+  $('url').disabled=merge;$('url').required=!merge;
+  for(const name of ['single','merge']){const button=$('mode-'+name);button.classList.toggle('selected',name===mode);button.setAttribute('aria-pressed',String(name===mode))}
+  drawSources();
+}
+$('mode-single').onclick=()=>setMode('single');$('mode-merge').onclick=()=>setMode('merge');
+$('add-source').onclick=()=>{if(sourceValues.length<8){sourceValues.push('');drawSources();$('source-'+(sourceValues.length-1)).focus()}};
+drawSources();
+$('backup-form').onsubmit=async e=>{e.preventDefault();$('start').disabled=true;try{await api('/api/jobs',backupMode==='merge'?{urls:sourceValues.map(value=>value.trim()),title:$('title').value}:{url:$('url').value,title:$('title').value});notice('任务已开始');await refresh()}catch(e){notice(e.message);$('start').disabled=false}};
 refresh();setInterval(refresh,2000);

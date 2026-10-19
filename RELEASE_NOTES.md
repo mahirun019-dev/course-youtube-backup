@@ -1,15 +1,14 @@
-# Course YouTube Backup v1.2.0
+# Course YouTube Backup v1.3.0
 
-双击「课程视频备份.app」即可使用，无需每天打开 Terminal 或运行 start.command。
+多个课程片段，合并为一条 Private 备份。
 
-- 后台启动现有 FastAPI，服务就绪后打开默认浏览器；已运行时只打开页面，不重复启动。
-- App 提供停止服务，关闭窗口或 Command+Q 会先安全停止；备份/授权/视频操作忙碌时拒绝退出。
-- 保留现有项目 data/ 中的 OAuth、数据库、字幕、历史和临时文件，不迁移或重置。
-- 可选登录启动在 App 中明确确认后开启，默认关闭；支持关闭，KeepAlive=false，不自动拉起，不自动公开任何视频。
-- 网页 UI 和现有下载、上传、字幕、Gemini、删除业务保持现状。
+- 原输入区增加「单视频 / 多视频合并」，默认单视频；支持 2–8 个链接、增删和上下排序，最终标题始终手动填写。
+- 按顺序逐个下载（最高 1080p），兼容参数直接拼接，不兼容时统一 H.264/AAC，等比缩放与填充保留完整画面；校验音视频流、总时长、同步与完整解码。
+- 每个任务只调用一次上传流程，仍使用原 Google OAuth 和 resumable upload，固定 Private；上传确认后清理该任务所有分段与合并文件。
+- 下载/合并/上传失败保留可用文件，重试复用已完成部分和原会话；磁盘空间预估与检查，真实阶段进度，不显示虚假合并百分比。
+- 历史保留原始链接、标题与顺序；字幕仍由 YouTube 生成，Gemini、可见性和删除流程保留。
+- 原 macOS App 启动、图标、数据目录和凭据保留；已有历史以单视频兼容，只增加数据库列。升级前退出 App，保留 data/ 并备份到本机安全位置。
 
-Release ZIP 包含 Apple Silicon / Intel universal 原生 App，要求 macOS 13+。App 为本地 ad-hoc 签名，未做 Apple 公证；首次打开可能需在系统设置的隐私与安全性中确认。Python、ffmpeg、Deno/Node 的首次环境配置仍按 README；日常使用不需要 Terminal。
+验证：192 项自动测试；本地合成 2/4 段、重排、不同分辨率/编码/帧率/音频格式/采样率/声道、无音轨、失败恢复与清理。隔离 Chrome 验证新增输入、八段上限、顺序、进度、历史及单视频；Google 操作全部 mock，没有反复上传真实课程。
 
-发布包不包含 OAuth 凭据、个人课程、字幕、数据库或 .venv。start.command 保留为备用入口。
-
-验证：139 项自动测试通过；实际 Finder 冷启动、重复双击复用 PID、Safari 自动打开、停止按钮与关闭 App 无进程残留；原 OAuth/历史/字幕保留。真实临时 LaunchAgent 两次载入启动/停止通过，模拟重新登录和旧 PID。未实际重启 Mac，日常登录启动保持关闭。
+Release ZIP 包含签名验证的 Apple Silicon / Intel universal App（macOS 13+）与多尺寸 .icns。App 为 ad-hoc 签名，未做 Apple 公证，首次配置仍需 Python 3.10+、ffmpeg 与 Deno/Node。编译临时缓存自动清理。发布包不包含 OAuth 凭据、data/、个人课程、字幕、数据库或 .venv。

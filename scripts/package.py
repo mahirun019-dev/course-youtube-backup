@@ -21,7 +21,7 @@ def package(root=ROOT, output=None):
         info = plistlib.loads((bundle/"Contents/Info.plist").read_bytes())
         if info.get("CFBundleShortVersionString") != VERSION:
             raise ValueError("Mac App 版本与源码不一致，请先重新构建。")
-        allowed = {"Contents/Info.plist","Contents/PkgInfo","Contents/MacOS/CourseBackup","Contents/_CodeSignature/CodeResources"}
+        allowed = {"Contents/Info.plist","Contents/PkgInfo","Contents/MacOS/CourseBackup","Contents/Resources/CourseBackup.icns","Contents/_CodeSignature/CodeResources"}
         for path in bundle.rglob("*"):
             if path.is_symlink():
                 raise ValueError("App 包含符号链接，拒绝打包。")
