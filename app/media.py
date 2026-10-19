@@ -82,9 +82,11 @@ def copy_compatible(infos):
     signatures = []
     for info in infos:
         v, a = info["video"], info["audio"]
-        if not a or v.get("codec_name") != "h264" or a.get("codec_name") != "aac" or v.get("pix_fmt") != "yuv420p":
+        if not a or v.get("codec_name") not in {"h264", "hevc", "av1", "vp9", "mpeg4"} or a.get("codec_name") not in {"aac", "opus", "mp3"} or not v.get("pix_fmt"):
             return False
-        if not v.get("extradata_hash") or not a.get("extradata_hash") or rotation(v):
+        # VP9 keeps its configuration in keyframes; other supported video
+        # codecs expose decoder configuration through extradata. Opus/AAC do too.
+        if (v["codec_name"] != "vp9" and not v.get("extradata_hash")) or (a["codec_name"] != "mp3" and not a.get("extradata_hash")) or rotation(v):
             return False
         if int(v["width"]) > 1920 or int(v["height"]) > 1080 or abs(info["audio_offset"]) > .05:
             return False

@@ -259,3 +259,14 @@ def test_audio_tail_preserved_with_last_video_frame(materials,tmp_path):
     assert abs(media.probe(output)['duration']-2.3)<.2
     assert color_at(output,1.1)[0]>200 and abs(frequency_at(output,1.05,.15)-400)<15
     assert color_at(output,1.8)[2]>200 and abs(frequency_at(output,1.6)-800)<15
+
+
+@pytest.mark.parametrize('count',[2,4])
+def test_identical_vp9_opus_copied_without_reencoding(tmp_path,count):
+    inputs=[clip(tmp_path/f'vp9-{n}.mp4',color,400+n*200,codec='libvpx-vp9',audio_codec='libopus') for n,color in enumerate(['red','green','blue','yellow'][:count])]
+    assert media.copy_compatible([media.probe(path) for path in inputs])
+    stages=[];output=media.merge_videos(inputs,tmp_path,stages.append);info=media.probe(output)
+    assert info['video']['codec_name']=='vp9' and info['audio']['codec_name']=='opus'
+    assert not any('统一 H.264' in stage for stage in stages)
+    assert abs(info['duration']-count)<.2
+    assert abs(frequency_at(output,count-.8)-(400+(count-1)*200))<15

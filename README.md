@@ -10,7 +10,7 @@
 >
 > YouTube 不保证生成自动字幕。`captions.list` / `captions.download` 也可能受权限限制；没有凭据时只能验证 mock 行为，不能保证你的频道能通过 API 取得 ASR。工具会显示未就绪或真实 API 错误，并提供 YouTube Studio 字幕入口，不会伪造“字幕完成”。
 
-## v1.3.0 · 多视频合并
+## v1.3.1 · 多视频合并
 
 本版在 v1.2.0 上增加可选的 **2–8 个视频合并**：按指定顺序逐个下载，合并成一个视频，只上传一次，固定为 Private。默认单视频流程、OAuth、历史、字幕、Gemini、删除和原生启动器继续保留。日常使用双击项目文件夹中的 **课程视频备份.app**，无需 Terminal。
 
@@ -19,7 +19,7 @@
 - **临时文件**：只有确认上传完成后才清理该任务目录，拒绝符号链接和其他任务的文件路径。上传失败保留下载文件及上传会话，供手动恢复。
 - **异常保留**：token 写入采用原子替换，写入/同步/替换失败保留原文件；中断任务和损坏数据库保留原数据。远端删除未确认成功时不清理本地数据；本地清理失败保留记录并提示重试。
 
-本版验证：**192 项自动测试通过**；包含本地 ffmpeg 的 2/4 段及重排、不同分辨率/帧率/视频编码/音频格式/采样率/声道、缺失音轨、声音与画面顺序、下载/合并/上传失败与恢复、旧数据库迁移，以及单视频/合并记录的隐私和删除回归。真实 Chrome 在隔离数据下验证多视频与单视频完整流程；所有 Google 写操作均为 mock，不下载或上传真实课程。发布前检查原生 App 启动、现有数据保留、依赖一致性、Git 历史/暂存区及 ZIP 安全。
+本版验证：**194 项自动测试通过**；包含本地 ffmpeg 的 2/4 段及重排、不同分辨率/帧率/视频编码/音频格式/采样率/声道、缺失音轨、声音与画面顺序、下载/合并/上传失败与恢复、旧数据库迁移，以及单视频/合并记录的隐私和删除回归。真实 Chrome 在隔离数据下验证多视频与单视频完整流程；所有 Google 写操作均为 mock，不下载或上传真实课程。发布前检查原生 App 启动、现有数据保留、依赖一致性、Git 历史/暂存区及 ZIP 安全。
 
 更新已有安装时，请先等待当前任务结束并退出应用，备份 `data/` 到自己的本地安全位置，再替换程序文件。保留原 `data/`，不要把凭据或整个数据目录上传到 GitHub；App 和备用入口会使用现有授权和历史。Public 视频在关闭应用后仍为公开，使用结束请手动恢复并核对。
 
@@ -121,7 +121,7 @@ python3 -m venv .venv
 
 ### 合并质量与资源
 
-- `ffprobe` 对比分辨率、帧率、时基、H.264/AAC 编码配置、音轨参数与时间偏移。完全兼容时优先 [concat demuxer + stream copy](https://ffmpeg.org/ffmpeg-formats.html#concat)，不重新编码。
+- `ffprobe` 对比分辨率、帧率、时基、MP4 可封装编码的配置、音轨参数与时间偏移。H.264/HEVC/AV1/VP9/MPEG-4 与 AAC/Opus/MP3 等支持的组合在参数完全兼容时优先 [concat demuxer + stream copy](https://ffmpeg.org/ffmpeg-formats.html#concat)，不重新编码。
 - 参数不同或直接拼接/校验失败时，单次 ffmpeg 处理为 H.264（CRF 20、veryfast）+ AAC 48kHz/stereo MP4；统一帧率（最高 60fps）与画布（最高 1920×1080），等比缩放并填充，不裁切 PPT。原片无音轨时补相应静音；音轨偏移进行对齐，尾部保留音频并按需延续末帧。
 - 转码只写最终输出，不保存中间转码副本；限制编码线程和 filter 线程以控制 CPU/内存。合并后检查音视频流、总时长、同步偏移，并解码到 null sink 验证可读性。长课程校验也需时间，不会把未校验文件标记为完成。
 - 下载前用元数据文件大小/码率/时长估算空间，并预留合并输出与至少 1 GiB 余量；无法取得大小/时长时按每段 2 GiB 保守估算。估算不是精确上限；下载前与合并前再次检查，空间不足或实际写入失败时保留已完成输入。
@@ -261,7 +261,7 @@ UI 验证：`.venv/bin/python scripts/verify_ui.py`（需要安装 Chrome 或 `p
 <!-- PUBLIC_LINKS_START -->
 - [GitHub Repository](https://github.com/mahirun019-dev/course-youtube-backup)
 - [GitHub Pages 介绍网站](https://mahirun019-dev.github.io/course-youtube-backup/)
-- [v1.3.0 Release](https://github.com/mahirun019-dev/course-youtube-backup/releases/tag/v1.3.0)
+- [v1.3.1 Release](https://github.com/mahirun019-dev/course-youtube-backup/releases/tag/v1.3.1)
 <!-- PUBLIC_LINKS_END -->
 
 介绍页面源码在 `docs/`，可直接用 GitHub Pages 的 **Deploy from a branch → main → /docs**。无需 GitHub Actions 或公网后端。
